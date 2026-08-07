@@ -86,6 +86,10 @@ Not:
    - Termin-Alarm lead capture kutusu eklendi
    - B2B banner (Für Ärztinnen & Ärzte) eklendi
    - 4 maddelik FAQ bolumu + FAQPage JSON-LD eklendi
+7. SEO title + AI discoverability guclendirme
+   - Baslik guncellendi: "Arzttermin Wien: Kurzfristige Termine heute | Terminbörse.at"
+   - Metadata guclendirildi: canonical, OpenGraph, Twitter, keywords, robots
+   - JSON-LD eklendi: Organization + WebSite (SearchAction) + WebPage + FAQPage
 
 ## 8) Bekleyen / Sonraki Isler
 1. Google Places API entegrasyonu (SONRA YAPILACAK)

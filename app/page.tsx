@@ -41,11 +41,63 @@ const faqSchema = {
   ],
 };
 
+const organizationSchema = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: "Terminbörse.at",
+  url: "https://www.terminboerse.at",
+  logo: "https://www.terminboerse.at/icon.svg",
+  areaServed: "Wien",
+};
+
+const websiteSchema = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: "Terminbörse.at",
+  url: "https://www.terminboerse.at",
+  inLanguage: "de-AT",
+  potentialAction: {
+    "@type": "SearchAction",
+    target: "https://www.terminboerse.at/arzt?search={search_term_string}",
+    "query-input": "required name=search_term_string",
+  },
+};
+
+const webpageSchema = {
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  name: "Arzttermin Wien: Kurzfristige Termine heute | Terminbörse.at",
+  url: "https://www.terminboerse.at/",
+  inLanguage: "de-AT",
+  isPartOf: {
+    "@type": "WebSite",
+    name: "Terminbörse.at",
+    url: "https://www.terminboerse.at",
+  },
+  about: {
+    "@type": "MedicalOrganization",
+    name: "Arzttermine in Wien",
+    areaServed: "Wien",
+  },
+};
+
 export default function HomePage() {
   const doctors = normalizeDoctorsData(doctorsJson);
   const landingData = getLandingDoctorData(doctors);
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationSchema) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteSchema) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(webpageSchema) }}
+      />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}

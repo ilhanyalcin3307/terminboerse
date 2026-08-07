@@ -15,9 +15,41 @@ const sora = Sora({
 });
 
 export const metadata: Metadata = {
-  title: "Terminbörse.at | Storno-Termine in Wien",
+  metadataBase: new URL("https://www.terminboerse.at"),
+  title: "Arzttermin Wien: Kurzfristige Termine heute | Terminbörse.at",
   description:
-    "Die Börse für kurzfristige Storno-Termine in Wien. Schnell, einfach und kostenfrei.",
+    "Finde kurzfristige Arzttermine in Wien. Suche nach Fachbereich und Bezirk, entdecke freie Optionen und frage direkt Termine an.",
+  alternates: {
+    canonical: "/",
+  },
+  keywords: [
+    "Arzttermin Wien",
+    "kurzfristiger Arzttermin",
+    "freie Arzttermine Wien",
+    "Facharzt Wien",
+    "Zahnarzt Wien",
+    "Orthopädie Wien",
+    "Terminbörse",
+  ],
+  openGraph: {
+    title: "Arzttermin Wien: Kurzfristige Termine heute | Terminbörse.at",
+    description:
+      "Finde kurzfristige Arzttermine in Wien. Suche nach Fachbereich und Bezirk, entdecke freie Optionen und frage direkt Termine an.",
+    url: "https://www.terminboerse.at",
+    siteName: "Terminbörse.at",
+    locale: "de_AT",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Arzttermin Wien: Kurzfristige Termine heute | Terminbörse.at",
+    description:
+      "Finde kurzfristige Arzttermine in Wien. Suche nach Fachbereich und Bezirk, entdecke freie Optionen und frage direkt Termine an.",
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
