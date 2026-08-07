@@ -20,9 +20,16 @@ import { getGoogleMapsUrl, type DoctorRecord } from "@/lib/doctors";
 type ArztDirectoryProps = {
   initialDoctors?: DoctorRecord[];
   initialSearchQuery?: string;
+  initialSelectedSpecialty?: string;
+  initialSelectedDistrict?: string;
 };
 
-export function ArztDirectory({ initialDoctors = [], initialSearchQuery = "" }: ArztDirectoryProps) {
+export function ArztDirectory({
+  initialDoctors = [],
+  initialSearchQuery = "",
+  initialSelectedSpecialty = "Alle Fachbereiche",
+  initialSelectedDistrict = "All Wien",
+}: ArztDirectoryProps) {
   const router = useRouter();
   const [doctors, setDoctors] = useState<DoctorRecord[]>(initialDoctors);
   const [isLoading, setIsLoading] = useState(initialDoctors.length === 0);
@@ -70,8 +77,8 @@ export function ArztDirectory({ initialDoctors = [], initialSearchQuery = "" }: 
     [doctors],
   );
 
-  const [selectedSpecialty, setSelectedSpecialty] = useState("Alle Fachbereiche");
-  const [selectedDistrict, setSelectedDistrict] = useState("All Wien");
+  const [selectedSpecialty, setSelectedSpecialty] = useState(initialSelectedSpecialty);
+  const [selectedDistrict, setSelectedDistrict] = useState(initialSelectedDistrict);
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
 
   const featuredSpecialties = useMemo(() => specialties.slice(1, 7), [specialties]);

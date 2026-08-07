@@ -186,7 +186,16 @@ export function LandingPage({
       search_term: heroSearchQuery,
     });
 
-    router.push(`/arzt?search=${encodeURIComponent(heroSearchQuery)}`);
+    const params = new URLSearchParams({
+      search: heroSearchQuery,
+      category,
+    });
+
+    if (district !== "All Wien") {
+      params.set("district", district);
+    }
+
+    router.push(`/arzt?${params.toString()}`);
   }
 
   function openLeadModal(triggerSource: string, preselectedCategory?: string, preselectedDistrict?: string) {

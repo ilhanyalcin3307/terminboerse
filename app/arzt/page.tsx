@@ -1,10 +1,21 @@
 import { ArztDirectory } from "@/components/arzt/ArztDirectory";
 
 type ArztPageProps = {
-  searchParams: Promise<{ search?: string }>;
+  searchParams: Promise<{ search?: string; category?: string; district?: string }>;
 };
 
 export default async function ArztPage({ searchParams }: ArztPageProps) {
   const params = await searchParams;
-  return <ArztDirectory initialSearchQuery={params.search ?? ""} />;
+  const initialSearchQuery = params.search ?? "";
+  const initialSelectedSpecialty = params.category ?? "Alle Fachbereiche";
+  const initialSelectedDistrict = params.district ?? "All Wien";
+
+  return (
+    <ArztDirectory
+      key={`${initialSearchQuery}::${initialSelectedSpecialty}::${initialSelectedDistrict}`}
+      initialSearchQuery={initialSearchQuery}
+      initialSelectedSpecialty={initialSelectedSpecialty}
+      initialSelectedDistrict={initialSelectedDistrict}
+    />
+  );
 }
