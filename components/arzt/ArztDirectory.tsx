@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  CalendarClock,
   Globe,
   MapPin,
   PhoneCall,
@@ -12,8 +11,9 @@ import {
   Stethoscope,
   Route,
 } from "lucide-react";
+import { AppointmentRequestModal } from "@/components/arzt/AppointmentRequestModal";
 import { DevAnalyticsPanel } from "@/components/analytics/DevAnalyticsPanel";
-import { prependLocalStorageItem, trackEvent } from "@/lib/analytics";
+import { trackEvent } from "@/lib/analytics";
 import { getGoogleMapsUrl, type DoctorRecord } from "@/lib/doctors";
 
 type ArztDirectoryProps = {
@@ -70,7 +70,6 @@ export function ArztDirectory({ initialDoctors = [] }: ArztDirectoryProps) {
   const [selectedSpecialty, setSelectedSpecialty] = useState("Alle Fachbereiche");
   const [selectedDistrict, setSelectedDistrict] = useState("All Wien");
   const [searchQuery, setSearchQuery] = useState("");
-  const [savedDoctorId, setSavedDoctorId] = useState<string | null>(null);
 
   const featuredSpecialties = useMemo(() => specialties.slice(1, 7), [specialties]);
 
@@ -86,35 +85,6 @@ export function ArztDirectory({ initialDoctors = [] }: ArztDirectoryProps) {
   }, [doctors, searchQuery, selectedDistrict, selectedSpecialty]);
 
   const doctorsWithPhone = useMemo(() => doctors.filter((item) => item.phone).length, [doctors]);
-
-  function saveInterest(doctor: DoctorRecord) {
-    trackEvent("cta_clicked", {
-      source: "arzt-directory",
-      category: doctor.specialty,
-      district: doctor.district,
-      doctor_id: doctor.id,
-      action: "appointment_interest",
-    });
-    trackEvent("lead_submitted", {
-      source: "arzt-directory",
-      category: doctor.specialty,
-      district: doctor.district,
-      channel: "directory_interest",
-      doctor_id: doctor.id,
-    });
-
-    prependLocalStorageItem("terminboerse_leads", {
-      id: crypto.randomUUID(),
-      source: "arzt-directory",
-      name: "",
-      contact: "interesse@placeholder.at",
-      category: doctor.specialty,
-      district: doctor.district,
-      createdAt: new Date().toISOString(),
-    });
-
-    setSavedDoctorId(doctor.id);
-  }
 
   function trackDoctorAction(doctor: DoctorRecord, action: "phone" | "website" | "route") {
     trackEvent("doctor_action_clicked", {
@@ -311,19 +281,28 @@ export function ArztDirectory({ initialDoctors = [] }: ArztDirectoryProps) {
                 </a>
               </div>
 
-              <button
-                onClick={() => saveInterest(doctor)}
-                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-500"
-              >
-                <CalendarClock className="h-4 w-4" />
-                Termin sichern
-              </button>
-
-              {savedDoctorId === doctor.id ? (
-                <p className="mt-3 text-sm font-medium text-emerald-700">
-                  Interesse gespeichert. Wir melden uns bei passenden freien Terminen.
-                </p>
-              ) : null}
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                <Link
+                  href={`/arzt/${encodeURIComponent(doctor.id)}`}
+                  onClick={() =>
+                    trackEvent("cta_clicked", {
+                      source: "arzt-directory",
+                      action: "doctor_detail",
+                      doctor_id: doctor.id,
+                      category: doctor.specialty,
+                      district: doctor.district,
+                    })
+                  }
+                  className="inline-flex items-center justify-center rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  Profil ansehen
+                </Link>
+                <AppointmentRequestModal
+                  doctor={doctor}
+                  source="arzt-card"
+                  triggerClassName="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-500"
+                />
+              </div>
             </article>
           )) : null}
 

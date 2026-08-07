@@ -6,10 +6,16 @@ export type DoctorRecord = {
   address: string;
   providerType: "OEGK" | "Wahlarzt" | "Privat";
   phone?: string;
+  email?: string;
   website?: string;
   latitude?: number;
   longitude?: number;
   nextSlot?: string;
+};
+
+export type WorkingHoursEntry = {
+  label: string;
+  value: string;
 };
 
 export type DoctorTickerItem = {
@@ -175,6 +181,13 @@ export function getGoogleMapsUrl(doctor: Pick<DoctorRecord, "address" | "latitud
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(doctor.address)}`;
 }
 
+export function getGoogleMapsEmbedUrl(doctor: Pick<DoctorRecord, "address" | "latitude" | "longitude">) {
+  if (typeof doctor.latitude === "number" && typeof doctor.longitude === "number") {
+    return `https://www.google.com/maps?q=${doctor.latitude},${doctor.longitude}&z=15&output=embed`;
+  }
+  return `https://www.google.com/maps?q=${encodeURIComponent(doctor.address)}&z=15&output=embed`;
+}
+
 export function normalizeDoctorsData(rawData: unknown): DoctorRecord[] {
   const collection = rawData as GeoJsonFeatureCollection;
 
@@ -221,6 +234,7 @@ export function normalizeDoctorsData(rawData: unknown): DoctorRecord[] {
     );
     const nextSlot = pickText(raw, ["nextSlot", "next_slot", "termin", "slot", "zeit", "SLOT"]);
     const phone = normalizePhone(pickText(raw, ["TELEFON", "phone", "telefon"]));
+    const email = pickText(raw, ["EMAIL", "E_MAIL", "MAIL", "email"]);
     const website = normalizeWebsite(pickText(raw, ["INTERNET", "website", "web", "url"]));
     const { latitude, longitude } = getCoordinates(raw);
 
@@ -236,6 +250,7 @@ export function normalizeDoctorsData(rawData: unknown): DoctorRecord[] {
       address: address || "Adresse folgt",
       providerType,
       ...(phone ? { phone } : {}),
+      ...(email ? { email } : {}),
       ...(website ? { website } : {}),
       ...(typeof latitude === "number" ? { latitude } : {}),
       ...(typeof longitude === "number" ? { longitude } : {}),
@@ -294,4 +309,23 @@ export function getLandingDoctorData(doctors: DoctorRecord[]): LandingDoctorData
     districts: getDoctorDistricts(doctors),
     tickerItems: getTickerItemsFromDoctors(doctors),
   };
+}
+
+export function findDoctorById(doctors: DoctorRecord[], id: string) {
+  return doctors.find((doctor) => doctor.id === id);
+}
+
+export function getDoctorWorkingHours(doctor: DoctorRecord): WorkingHoursEntry[] {
+  return [
+    {
+      label: "Montag bis Freitag",
+      value: "Termine nach Vereinbarung",
+    },
+    {
+      label: "Aktueller Hinweis",
+      value: doctor.website
+        ? "Bitte pruefe die Praxis-Website oder kontaktiere die Ordination fuer exakte Sprechzeiten."
+        : "Bitte kontaktiere die Ordination fuer exakte Sprechzeiten.",
+    },
+  ];
 }

@@ -7,7 +7,6 @@ import {
   BriefcaseBusiness,
   CircleCheckBig,
   Clock3,
-  Hammer,
   HeartPulse,
   Mail,
   MapPin,
@@ -48,11 +47,10 @@ const fallbackDistricts = [
 ];
 
 const fallbackCategories = [
+  "Hausarzt / Allgemeinmedizin",
   "Dermatologie",
   "Zahnmedizin",
   "Augenheilkunde",
-  "Elektriker",
-  "Installateur",
   "Orthopaedie",
 ];
 
@@ -64,14 +62,6 @@ const sectorCards = [
     icon: HeartPulse,
     active: true,
     category: "Dermatologie",
-  },
-  {
-    title: "Handwerker & Haus",
-    href: "/handwerker",
-    badge: "14 Betriebe verfuegbar",
-    icon: Hammer,
-    active: true,
-    category: "Elektriker",
   },
   {
     title: "Recht & Finanzen",
@@ -343,10 +333,10 @@ export function LandingPage({
             Lange Wartelisten? Nicht in Wien.
           </p>
           <h1 className="max-w-4xl text-3xl font-extrabold leading-tight tracking-tight text-slate-900 md:text-5xl">
-            Wochenlang warten? Heute noch zum Arzt oder Handwerker!
+            Wochenlang warten? Heute noch zum Arzt in Wien!
           </h1>
           <p className="mt-4 max-w-3xl text-base text-slate-600 md:text-lg">
-            Die Boerse fuer kurzfristige Storno-Termine in Wien. Schnell, einfach & kostenfrei.
+            Die Boerse fuer kurzfristige Arzttermine in Wien. Schnell, einfach & kostenfrei.
           </p>
 
           <div className="mt-7 grid gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm md:grid-cols-[1fr_1fr_auto] md:gap-4 md:p-4">
