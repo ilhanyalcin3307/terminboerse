@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { DevAnalyticsPanel } from "@/components/analytics/DevAnalyticsPanel";
 import { TerminboerseLogo } from "@/components/branding/TerminboerseLogo";
+import { prependLocalStorageItem, trackEvent } from "@/lib/analytics";
 import { getDoctorDistricts, getDoctorSpecialties, getTickerItemsFromDoctors, type DoctorRecord } from "@/lib/doctors";
 
 type LandingPageProps = {
@@ -34,8 +35,6 @@ type LeadEntry = {
   district: string;
   createdAt: string;
 };
-
-type TrackEventName = "cta_clicked" | "modal_opened" | "lead_submitted";
 
 const fallbackDistricts = [
   "All Wien",
@@ -166,18 +165,6 @@ export function LandingPage({ initialCategory, doctors = [] }: LandingPageProps)
     return `${district} · ${category}`;
   }, [district, category]);
 
-  function trackEvent(eventName: TrackEventName, payload: Record<string, string>) {
-    const event = {
-      id: crypto.randomUUID(),
-      eventName,
-      payload,
-      createdAt: new Date().toISOString(),
-    };
-    const previous = JSON.parse(localStorage.getItem("terminboerse_events") ?? "[]");
-    localStorage.setItem("terminboerse_events", JSON.stringify([event, ...(previous as unknown[])]));
-    console.log("[tracking]", eventName, payload);
-  }
-
   function openProviderModal() {
     setProviderModalOpen(true);
     setProviderSuccess(false);
@@ -246,8 +233,7 @@ export function LandingPage({ initialCategory, doctors = [] }: LandingPageProps)
     };
 
     try {
-      const previous = JSON.parse(localStorage.getItem("terminboerse_leads") ?? "[]") as LeadEntry[];
-      localStorage.setItem("terminboerse_leads", JSON.stringify([entry, ...previous]));
+      prependLocalStorageItem("terminboerse_leads", entry);
 
       await fetch("/api/leads", {
         method: "POST",
@@ -310,8 +296,7 @@ export function LandingPage({ initialCategory, doctors = [] }: LandingPageProps)
       createdAt: new Date().toISOString(),
     };
 
-    const previous = JSON.parse(localStorage.getItem("terminboerse_waitlist") ?? "[]");
-    localStorage.setItem("terminboerse_waitlist", JSON.stringify([entry, ...(previous as unknown[])]));
+    prependLocalStorageItem("terminboerse_waitlist", entry);
 
     trackEvent("lead_submitted", {
       source: "inactive-category",
@@ -363,7 +348,15 @@ export function LandingPage({ initialCategory, doctors = [] }: LandingPageProps)
               <MapPin className="h-4 w-4 text-sky-600" />
               <select
                 value={district}
-                onChange={(event) => setDistrict(event.target.value)}
+                onChange={(event) => {
+                  const nextDistrict = event.target.value;
+                  setDistrict(nextDistrict);
+                  trackEvent("district_selected", {
+                    source: "landing-hero",
+                    district: nextDistrict,
+                    current_category: category,
+                  });
+                }}
                 className="w-full bg-transparent text-sm outline-none"
                 aria-label="Bezirk waehlen"
               >
@@ -379,7 +372,15 @@ export function LandingPage({ initialCategory, doctors = [] }: LandingPageProps)
               <HeartPulse className="h-4 w-4 text-sky-600" />
               <select
                 value={category}
-                onChange={(event) => setCategory(event.target.value)}
+                onChange={(event) => {
+                  const nextCategory = event.target.value;
+                  setCategory(nextCategory);
+                  trackEvent("specialty_selected", {
+                    source: "landing-hero",
+                    specialty: nextCategory,
+                    current_district: district,
+                  });
+                }}
                 className="w-full bg-transparent text-sm outline-none"
                 aria-label="Fachbereich waehlen"
               >

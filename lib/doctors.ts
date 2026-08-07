@@ -5,6 +5,10 @@ export type DoctorRecord = {
   district: string;
   address: string;
   providerType: "OEGK" | "Wahlarzt" | "Privat";
+  phone?: string;
+  website?: string;
+  latitude?: number;
+  longitude?: number;
   nextSlot?: string;
 };
 
@@ -13,6 +17,10 @@ type RawDoctor = Record<string, unknown>;
 type GeoJsonFeature = {
   id?: unknown;
   properties?: Record<string, unknown>;
+  geometry?: {
+    type?: unknown;
+    coordinates?: unknown;
+  };
 };
 
 type GeoJsonFeatureCollection = {
@@ -72,11 +80,7 @@ function normalizeSpecialty(value: string) {
   if (normalized.includes("allgemeinmedizin") || normalized.includes("praktischer arzt")) {
     return "Hausarzt / Allgemeinmedizin";
   }
-  if (
-    normalized.includes("orthopaed") ||
-    normalized.includes("orthopad") ||
-    normalized.includes("orthop")
-  ) {
+  if (normalized.includes("orthopaed") || normalized.includes("orthopad") || normalized.includes("orthop")) {
     return "Orthopaedie";
   }
   if (
@@ -130,6 +134,33 @@ function normalizeSpecialty(value: string) {
   return text;
 }
 
+function normalizeWebsite(value: string) {
+  if (!value) {
+    return undefined;
+  }
+  if (value.startsWith("http://") || value.startsWith("https://")) {
+    return value;
+  }
+  return `https://${value}`;
+}
+
+function normalizePhone(value: string) {
+  return value.replace(/\s+/g, " ").trim() || undefined;
+}
+
+function getCoordinates(raw: RawDoctor) {
+  const longitude = typeof raw.__longitude === "number" ? raw.__longitude : undefined;
+  const latitude = typeof raw.__latitude === "number" ? raw.__latitude : undefined;
+  return { latitude, longitude };
+}
+
+export function getGoogleMapsUrl(doctor: Pick<DoctorRecord, "address" | "latitude" | "longitude">) {
+  if (typeof doctor.latitude === "number" && typeof doctor.longitude === "number") {
+    return `https://www.google.com/maps/search/?api=1&query=${doctor.latitude},${doctor.longitude}`;
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(doctor.address)}`;
+}
+
 export function normalizeDoctorsData(rawData: unknown): DoctorRecord[] {
   const collection = rawData as GeoJsonFeatureCollection;
 
@@ -143,10 +174,17 @@ export function normalizeDoctorsData(rawData: unknown): DoctorRecord[] {
             if (!props || typeof props !== "object") {
               return null;
             }
+
+            const coordinates = Array.isArray(geo.geometry?.coordinates) ? geo.geometry?.coordinates : undefined;
+            const longitude = typeof coordinates?.[0] === "number" ? coordinates[0] : undefined;
+            const latitude = typeof coordinates?.[1] === "number" ? coordinates[1] : undefined;
             const featureId = asText(geo.id);
+
             return {
               ...props,
               __feature_id: featureId,
+              __latitude: latitude,
+              __longitude: longitude,
             } as RawDoctor;
           })
           .filter((entry): entry is RawDoctor => entry !== null)
@@ -157,32 +195,39 @@ export function normalizeDoctorsData(rawData: unknown): DoctorRecord[] {
   }
 
   const normalized = rawEntries.map((raw, index): DoctorRecord | null => {
-      const name = pickText(raw, ["NAME", "name", "arzt", "doctor_name", "fullName"]);
-      const specialty = pickText(raw, ["FACH", "specialty", "fachbereich", "fach", "kategorie", "category"]);
-      const address = pickText(raw, ["ADRESSE", "address", "adresse", "street", "strasse"]);
-      const district = normalizeDistrict(
-        pickText(raw, ["BEZIRK", "district", "bezirk", "district_name"]),
-        address,
-      );
-      const providerType = normalizeProviderType(
-        pickText(raw, ["KASSE", "providerType", "typ", "type", "versicherung", "kasse"]),
-      );
-      const nextSlot = pickText(raw, ["nextSlot", "next_slot", "termin", "slot", "zeit", "SLOT"]);
+    const name = pickText(raw, ["NAME", "name", "arzt", "doctor_name", "fullName"]);
+    const specialty = pickText(raw, ["FACH", "specialty", "fachbereich", "fach", "kategorie", "category"]);
+    const address = pickText(raw, ["ADRESSE", "address", "adresse", "street", "strasse"]);
+    const district = normalizeDistrict(
+      pickText(raw, ["BEZIRK", "district", "bezirk", "district_name"]),
+      address,
+    );
+    const providerType = normalizeProviderType(
+      pickText(raw, ["KASSE", "providerType", "typ", "type", "versicherung", "kasse"]),
+    );
+    const nextSlot = pickText(raw, ["nextSlot", "next_slot", "termin", "slot", "zeit", "SLOT"]);
+    const phone = normalizePhone(pickText(raw, ["TELEFON", "phone", "telefon"]));
+    const website = normalizeWebsite(pickText(raw, ["INTERNET", "website", "web", "url"]));
+    const { latitude, longitude } = getCoordinates(raw);
 
-      if (!name || !specialty) {
-        return null;
-      }
+    if (!name || !specialty) {
+      return null;
+    }
 
-      return {
-        id: pickText(raw, ["__feature_id", "OBJECTID", "id", "uuid", "slug"]) || `doc-${index + 1}`,
-        name,
-        specialty: normalizeSpecialty(specialty),
-        district,
-        address: address || "Adresse folgt",
-        providerType,
-        ...(nextSlot ? { nextSlot } : {}),
-      };
-    });
+    return {
+      id: pickText(raw, ["__feature_id", "OBJECTID", "id", "uuid", "slug"]) || `doc-${index + 1}`,
+      name,
+      specialty: normalizeSpecialty(specialty),
+      district,
+      address: address || "Adresse folgt",
+      providerType,
+      ...(phone ? { phone } : {}),
+      ...(website ? { website } : {}),
+      ...(typeof latitude === "number" ? { latitude } : {}),
+      ...(typeof longitude === "number" ? { longitude } : {}),
+      ...(nextSlot ? { nextSlot } : {}),
+    };
+  });
 
   return normalized.filter((entry): entry is DoctorRecord => entry !== null);
 }
@@ -208,9 +253,7 @@ export function getDoctorSpecialties(doctors: DoctorRecord[]) {
   ];
 
   const preferred = preferredOrder.filter((item) => unique.includes(item));
-  const remaining = unique
-    .filter((item) => !preferredOrder.includes(item))
-    .sort((a, b) => a.localeCompare(b));
+  const remaining = unique.filter((item) => !preferredOrder.includes(item)).sort((a, b) => a.localeCompare(b));
 
   return [...preferred, ...remaining];
 }
