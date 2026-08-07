@@ -1,0 +1,47 @@
+[
+  {
+    "id": "dr-1",
+    "name": "Dr. Anna Berger",
+    "specialty": "Dermatologie",
+    "district": "10. Bezirk",
+    "address": "Favoritenstrasse 124, 1100 Wien",
+    "providerType": "OEGK",
+    "nextSlot": "Heute 14:30 Uhr"
+  },
+  {
+    "id": "dr-2",
+    "name": "Dr. Michael Weiss",
+    "specialty": "Augenheilkunde",
+    "district": "03. Bezirk",
+    "address": "Landstrasser Hauptstrasse 58, 1030 Wien",
+    "providerType": "Wahlarzt",
+    "nextSlot": "Heute 16:15 Uhr"
+  },
+  {
+    "id": "dr-3",
+    "name": "Dr. Laura Huber",
+    "specialty": "Zahnmedizin",
+    "district": "21. Bezirk",
+    "address": "Bruenner Strasse 44, 1210 Wien",
+    "providerType": "OEGK",
+    "nextSlot": "Morgen 09:00 Uhr"
+  },
+  {
+    "id": "dr-4",
+    "name": "Dr. Stefan Moser",
+    "specialty": "Orthopaedie",
+    "district": "22. Bezirk",
+    "address": "Wagramer Strasse 90, 1220 Wien",
+    "providerType": "Privat",
+    "nextSlot": "Morgen 11:45 Uhr"
+  },
+  {
+    "id": "dr-5",
+    "name": "Dr. Eva Leitner",
+    "specialty": "Innere Medizin",
+    "district": "01. Bezirk",
+    "address": "Schottenring 7, 1010 Wien",
+    "providerType": "Wahlarzt",
+    "nextSlot": "Heute 18:00 Uhr"
+  }
+]
