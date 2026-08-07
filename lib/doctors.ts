@@ -12,6 +12,20 @@ export type DoctorRecord = {
   nextSlot?: string;
 };
 
+export type DoctorTickerItem = {
+  district: string;
+  title: string;
+  time: string;
+  category: string;
+  address: string;
+};
+
+export type LandingDoctorData = {
+  specialties: string[];
+  districts: string[];
+  tickerItems: DoctorTickerItem[];
+};
+
 type RawDoctor = Record<string, unknown>;
 
 type GeoJsonFeature = {
@@ -272,4 +286,12 @@ export function getTickerItemsFromDoctors(doctors: DoctorRecord[]) {
     category: doctor.specialty,
     address: doctor.address,
   }));
+}
+
+export function getLandingDoctorData(doctors: DoctorRecord[]): LandingDoctorData {
+  return {
+    specialties: getDoctorSpecialties(doctors),
+    districts: getDoctorDistricts(doctors),
+    tickerItems: getTickerItemsFromDoctors(doctors),
+  };
 }

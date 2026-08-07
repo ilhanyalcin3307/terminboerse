@@ -19,11 +19,13 @@ import {
 import { DevAnalyticsPanel } from "@/components/analytics/DevAnalyticsPanel";
 import { TerminboerseLogo } from "@/components/branding/TerminboerseLogo";
 import { prependLocalStorageItem, trackEvent } from "@/lib/analytics";
-import { getDoctorDistricts, getDoctorSpecialties, getTickerItemsFromDoctors, type DoctorRecord } from "@/lib/doctors";
+import type { DoctorTickerItem } from "@/lib/doctors";
 
 type LandingPageProps = {
   initialCategory?: string;
-  doctors?: DoctorRecord[];
+  doctorSpecialties?: string[];
+  doctorDistricts?: string[];
+  tickerItems?: DoctorTickerItem[];
 };
 
 type LeadEntry = {
@@ -96,24 +98,28 @@ function isValidContact(contact: string) {
   return emailRegex.test(trimmed) || phoneRegex.test(trimmed);
 }
 
-export function LandingPage({ initialCategory, doctors = [] }: LandingPageProps) {
+export function LandingPage({
+  initialCategory,
+  doctorSpecialties = [],
+  doctorDistricts = [],
+  tickerItems: incomingTickerItems = [],
+}: LandingPageProps) {
   const [leadModalOpen, setLeadModalOpen] = useState(false);
   const [providerModalOpen, setProviderModalOpen] = useState(false);
   const [waitlistModalOpen, setWaitlistModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
-  const availableDoctorSpecialties = useMemo(() => getDoctorSpecialties(doctors), [doctors]);
-  const availableDoctorDistricts = useMemo(() => getDoctorDistricts(doctors), [doctors]);
+  const availableDoctorSpecialties = useMemo(() => doctorSpecialties, [doctorSpecialties]);
+  const availableDoctorDistricts = useMemo(() => doctorDistricts, [doctorDistricts]);
   const availableCategories = useMemo(() => {
     const combined = new Set([...availableDoctorSpecialties, ...fallbackCategories]);
     return Array.from(combined);
   }, [availableDoctorSpecialties]);
 
   const tickerItems = useMemo(() => {
-    const dynamic = getTickerItemsFromDoctors(doctors);
-    if (dynamic.length > 0) {
-      return dynamic;
+    if (incomingTickerItems.length > 0) {
+      return incomingTickerItems;
     }
     return [
       {
@@ -138,7 +144,7 @@ export function LandingPage({ initialCategory, doctors = [] }: LandingPageProps)
         address: "Bruenner Strasse 44, 1210 Wien",
       },
     ];
-  }, [doctors]);
+  }, [incomingTickerItems]);
 
   const [district, setDistrict] = useState("All Wien");
   const [category, setCategory] = useState(initialCategory ?? availableCategories[0] ?? "Dermatologie");

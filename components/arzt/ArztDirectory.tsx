@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   CalendarClock,
@@ -17,10 +17,46 @@ import { prependLocalStorageItem, trackEvent } from "@/lib/analytics";
 import { getGoogleMapsUrl, type DoctorRecord } from "@/lib/doctors";
 
 type ArztDirectoryProps = {
-  doctors: DoctorRecord[];
+  initialDoctors?: DoctorRecord[];
 };
 
-export function ArztDirectory({ doctors }: ArztDirectoryProps) {
+export function ArztDirectory({ initialDoctors = [] }: ArztDirectoryProps) {
+  const [doctors, setDoctors] = useState<DoctorRecord[]>(initialDoctors);
+  const [isLoading, setIsLoading] = useState(initialDoctors.length === 0);
+
+  useEffect(() => {
+    if (initialDoctors.length > 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadDoctors() {
+      try {
+        const response = await fetch("/api/doctors", { cache: "no-store" });
+        const payload = (await response.json()) as { doctors?: DoctorRecord[] };
+        if (!cancelled) {
+          setDoctors(Array.isArray(payload.doctors) ? payload.doctors : []);
+        }
+      } catch (error) {
+        console.error("Arztdaten konnten nicht geladen werden", error);
+        if (!cancelled) {
+          setDoctors([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadDoctors();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialDoctors]);
+
   const specialties = useMemo(
     () => ["Alle Fachbereiche", ...Array.from(new Set(doctors.map((item) => item.specialty))).sort((a, b) => a.localeCompare(b))],
     [doctors],
@@ -205,7 +241,13 @@ export function ArztDirectory({ doctors }: ArztDirectoryProps) {
         </section>
 
         <section className="mt-6 grid gap-4 xl:grid-cols-2">
-          {filteredDoctors.map((doctor) => (
+          {isLoading ? (
+            <article className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-slate-600 xl:col-span-2">
+              Arztdaten werden geladen...
+            </article>
+          ) : null}
+
+          {!isLoading ? filteredDoctors.map((doctor) => (
             <article key={doctor.id} className="rounded-[1.6rem] border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -283,9 +325,9 @@ export function ArztDirectory({ doctors }: ArztDirectoryProps) {
                 </p>
               ) : null}
             </article>
-          ))}
+          )) : null}
 
-          {filteredDoctors.length === 0 ? (
+          {!isLoading && filteredDoctors.length === 0 ? (
             <article className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-600 xl:col-span-2">
               Keine Treffer fuer diese Kombination. Bitte waehle einen anderen Bezirk, Fachbereich oder Suchbegriff.
             </article>
