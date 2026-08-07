@@ -81,6 +81,11 @@ Not:
    - Ekrandaki metinlerde oe/ae/ue yazimlari uygun sekilde ö/ä/ü/ß olarak guncellendi
    - Branding gorunumu TerminBoerse.at yerine Terminbörse.at olacak sekilde duzeltildi
    - URL ve teknik degisken adlari (terminboerse.at) bilincli olarak ayni birakildi
+6. Homepage SEO + conversion genisletmeleri
+   - Beliebte Suchen in Wien (Quick Links) bolumu eklendi
+   - Termin-Alarm lead capture kutusu eklendi
+   - B2B banner (Für Ärztinnen & Ärzte) eklendi
+   - 4 maddelik FAQ bolumu + FAQPage JSON-LD eklendi
 
 ## 8) Bekleyen / Sonraki Isler
 1. Google Places API entegrasyonu (SONRA YAPILACAK)

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import {
@@ -36,6 +37,16 @@ type LeadEntry = {
   createdAt: string;
 };
 
+type SeoQuickLink = {
+  label: string;
+  search: string;
+};
+
+type FaqItem = {
+  question: string;
+  answer: string;
+};
+
 const fallbackDistricts = [
   "All Wien",
   "01. Innere Stadt",
@@ -51,6 +62,40 @@ const fallbackCategories = [
   "Zahnmedizin",
   "Augenheilkunde",
   "Orthopädie",
+];
+
+const seoQuickLinks: SeoQuickLink[] = [
+  { label: "Hausarzt 1100 Wien", search: "Hausarzt 1100 Wien" },
+  { label: "Zahnarzt 1030 Wien", search: "Zahnarzt 1030 Wien" },
+  { label: "Orthopädie Wien", search: "Orthopädie Wien" },
+  { label: "Augenarzt 1070 Wien", search: "Augenarzt 1070 Wien" },
+  { label: "Dermatologie 1060 Wien", search: "Dermatologie 1060 Wien" },
+  { label: "Kinderarzt 1220 Wien", search: "Kinderarzt 1220 Wien" },
+  { label: "HNO 1180 Wien", search: "HNO 1180 Wien" },
+  { label: "Gynäkologie 1090 Wien", search: "Gynäkologie 1090 Wien" },
+];
+
+const faqItems: FaqItem[] = [
+  {
+    question: "Wie finde ich schnell einen freien Arzttermin in Wien?",
+    answer:
+      "Wähle Bezirk und Fachbereich oder nutze die Suche auf Terminbörse.at. Danach siehst du passende Einträge und kannst direkt Kontakt aufnehmen.",
+  },
+  {
+    question: "Kostet die Nutzung von Terminbörse.at etwas?",
+    answer:
+      "Nein. Die Suche und Termin-Anfrage für Patientinnen und Patienten ist kostenfrei.",
+  },
+  {
+    question: "Wie funktioniert der Termin-Alarm?",
+    answer:
+      "Du hinterlegst E-Mail und gewünschten Fachbereich. Sobald passende Optionen verfügbar sind, informieren wir dich zuerst.",
+  },
+  {
+    question: "Ich bin Ärztin/Arzt in Wien. Wie erhalte ich Anfragen?",
+    answer:
+      "Über den Button Profil kostenlos beanspruchen kannst du Kontakt aufnehmen und dein Profil für direkte Termin-Anfragen aktivieren.",
+  },
 ];
 
 function isValidContact(contact: string) {
@@ -119,6 +164,12 @@ export function LandingPage({
   const [formCategory, setFormCategory] = useState(initialCategory ?? availableCategories[0] ?? "Dermatologie");
   const [formDistrict, setFormDistrict] = useState("All Wien");
   const [formError, setFormError] = useState("");
+
+  const [alarmCategory, setAlarmCategory] = useState(initialCategory ?? availableCategories[0] ?? "Dermatologie");
+  const [alarmEmail, setAlarmEmail] = useState("");
+  const [alarmSubmitting, setAlarmSubmitting] = useState(false);
+  const [alarmSuccess, setAlarmSuccess] = useState(false);
+  const [alarmError, setAlarmError] = useState("");
 
   const heroSummary = useMemo(() => {
     return `${district} · ${category}`;
@@ -226,6 +277,54 @@ export function LandingPage({
       setFormError("Es gab ein Problem beim Speichern. Bitte versuche es erneut.");
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleAlarmSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const email = alarmEmail.trim();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setAlarmError("Bitte gib eine gültige E-Mail-Adresse ein.");
+      return;
+    }
+
+    setAlarmError("");
+    setAlarmSubmitting(true);
+
+    const entry = {
+      id: crypto.randomUUID(),
+      source: "termin-alarm",
+      email,
+      category: alarmCategory,
+      district: "All Wien",
+      createdAt: new Date().toISOString(),
+    };
+
+    try {
+      prependLocalStorageItem("terminboerse_alarm_leads", entry);
+
+      await fetch("/api/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(entry),
+      });
+
+      trackEvent("lead_submitted", {
+        source: "termin-alarm",
+        category: alarmCategory,
+        district: "All Wien",
+        channel: "email",
+      });
+
+      setAlarmSuccess(true);
+      setAlarmEmail("");
+    } catch (error) {
+      console.error("Termin-Alarm konnte nicht gespeichert werden", error);
+      setAlarmError("Es gab ein Problem beim Speichern. Bitte versuche es erneut.");
+    } finally {
+      setAlarmSubmitting(false);
     }
   }
 
@@ -349,6 +448,105 @@ export function LandingPage({
               <h3 className="mt-3 font-semibold text-slate-900">3. Direkt buchen</h3>
               <p className="mt-2 text-sm text-slate-600">Gehe ohne monatelange Wartezeit zum Termin.</p>
             </article>
+          </div>
+        </section>
+
+        <section className="rounded-3xl border border-slate-200 bg-white p-6 md:p-8">
+          <h2 className="text-2xl font-bold text-slate-900">Beliebte Suchen in Wien</h2>
+          <p className="mt-2 text-sm text-slate-600">Schnell zu häufig gesuchten Kombinationen für organische Suche und direkte Termin-Anfragen.</p>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {seoQuickLinks.map((item) => (
+              <Link
+                key={item.search}
+                href={`/arzt?search=${encodeURIComponent(item.search)}`}
+                className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-800 transition hover:-translate-y-0.5 hover:border-sky-300 hover:bg-white"
+                onClick={() => {
+                  trackEvent("cta_clicked", {
+                    source: "seo-quick-links",
+                    action: "quick_search",
+                    search_term: item.search,
+                  });
+                }}
+              >
+                {item.label}
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-3xl border border-amber-200 bg-gradient-to-r from-amber-50 via-white to-amber-50 p-6 md:p-8">
+          <h2 className="text-2xl font-bold text-slate-900">Kein passender Termin frei?</h2>
+          <p className="mt-2 text-sm text-slate-600">Aktiviere den Termin-Alarm und erhalte zuerst passende Updates für deinen Fachbereich.</p>
+
+          {alarmSuccess ? (
+            <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">
+              Du bist eingetragen. Wir informieren dich bei passenden Termin-Optionen.
+            </div>
+          ) : (
+            <form onSubmit={handleAlarmSubmit} className="mt-5 grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
+              <select
+                value={alarmCategory}
+                onChange={(event) => setAlarmCategory(event.target.value)}
+                className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
+              >
+                {availableCategories.map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </select>
+              <input
+                required
+                type="email"
+                value={alarmEmail}
+                onChange={(event) => setAlarmEmail(event.target.value)}
+                placeholder="deinename@email.at"
+                className="rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-sky-300 focus:ring"
+              />
+              <button
+                type="submit"
+                disabled={alarmSubmitting}
+                className="rounded-xl bg-amber-500 px-5 py-2 text-sm font-bold text-white transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {alarmSubmitting ? "Wird gespeichert..." : "Termin-Alarm aktivieren"}
+              </button>
+            </form>
+          )}
+
+          {alarmError ? <p className="mt-3 text-sm font-medium text-rose-700">{alarmError}</p> : null}
+        </section>
+
+        <section className="rounded-3xl border border-sky-200 bg-sky-50 p-6 md:p-8">
+          <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">Für Ärztinnen & Ärzte in Wien</p>
+          <h2 className="mt-2 text-2xl font-bold text-slate-900">Sind Sie Ärztin oder Arzt in Wien?</h2>
+          <p className="mt-2 max-w-3xl text-slate-700">
+            Profil kostenlos beanspruchen und direkte Termin-Anfragen von Patientinnen und Patienten erhalten.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <Link
+              href="/kontakt?intent=claim"
+              className="rounded-xl bg-sky-600 px-5 py-2 text-sm font-bold text-white transition hover:bg-sky-500"
+            >
+              Profil kostenlos beanspruchen
+            </Link>
+            <Link
+              href="/arzt"
+              className="rounded-xl border border-sky-300 bg-white px-5 py-2 text-sm font-semibold text-sky-700 transition hover:bg-sky-100"
+            >
+              Arztverzeichnis ansehen
+            </Link>
+          </div>
+        </section>
+
+        <section className="rounded-3xl border border-slate-200 bg-white p-6 md:p-8">
+          <h2 className="text-2xl font-bold text-slate-900">Häufige Fragen zu Arztterminen in Wien</h2>
+          <div className="mt-5 space-y-3">
+            {faqItems.map((item) => (
+              <details key={item.question} className="group rounded-2xl border border-slate-200 bg-slate-50 p-4 open:bg-white">
+                <summary className="cursor-pointer list-none pr-6 text-sm font-semibold text-slate-900">
+                  {item.question}
+                </summary>
+                <p className="mt-3 text-sm text-slate-600">{item.answer}</p>
+              </details>
+            ))}
           </div>
         </section>
       </main>
