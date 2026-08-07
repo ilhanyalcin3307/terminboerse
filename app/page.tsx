@@ -10,6 +10,9 @@ export default function HomePage() {
       doctorSpecialties={landingData.specialties}
       doctorDistricts={landingData.districts}
       tickerItems={landingData.tickerItems}
+      totalDoctors={landingData.totalDoctors}
+      byCategory={landingData.byCategory}
+      byDistrictCategory={landingData.byDistrictCategory}
     />
   );
 }

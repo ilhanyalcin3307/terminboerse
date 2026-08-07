@@ -30,6 +30,9 @@ export type LandingDoctorData = {
   specialties: string[];
   districts: string[];
   tickerItems: DoctorTickerItem[];
+  totalDoctors: number;
+  byCategory: Record<string, number>;
+  byDistrictCategory: Record<string, number>;
 };
 
 type RawDoctor = Record<string, unknown>;
@@ -304,10 +307,22 @@ export function getTickerItemsFromDoctors(doctors: DoctorRecord[]) {
 }
 
 export function getLandingDoctorData(doctors: DoctorRecord[]): LandingDoctorData {
+  const byCategory: Record<string, number> = {};
+  const byDistrictCategory: Record<string, number> = {};
+
+  for (const doctor of doctors) {
+    byCategory[doctor.specialty] = (byCategory[doctor.specialty] ?? 0) + 1;
+    const districtCategoryKey = `${doctor.district}::${doctor.specialty}`;
+    byDistrictCategory[districtCategoryKey] = (byDistrictCategory[districtCategoryKey] ?? 0) + 1;
+  }
+
   return {
     specialties: getDoctorSpecialties(doctors),
     districts: getDoctorDistricts(doctors),
     tickerItems: getTickerItemsFromDoctors(doctors),
+    totalDoctors: doctors.length,
+    byCategory,
+    byDistrictCategory,
   };
 }
 

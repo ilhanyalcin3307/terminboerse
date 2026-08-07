@@ -26,6 +26,9 @@ type LandingPageProps = {
   doctorSpecialties?: string[];
   doctorDistricts?: string[];
   tickerItems?: DoctorTickerItem[];
+  totalDoctors?: number;
+  byCategory?: Record<string, number>;
+  byDistrictCategory?: Record<string, number>;
 };
 
 type LeadEntry = {
@@ -94,6 +97,9 @@ export function LandingPage({
   doctorSpecialties = [],
   doctorDistricts = [],
   tickerItems: incomingTickerItems = [],
+  totalDoctors = 0,
+  byCategory = {},
+  byDistrictCategory = {},
 }: LandingPageProps) {
   const router = useRouter();
   const [leadModalOpen, setLeadModalOpen] = useState(false);
@@ -162,6 +168,14 @@ export function LandingPage({
   const heroSummary = useMemo(() => {
     return `${district} · ${category}`;
   }, [district, category]);
+
+  const heroDoctorCount = useMemo(() => {
+    if (district === "All Wien") {
+      return byCategory[category] ?? totalDoctors;
+    }
+
+    return byDistrictCategory[`${district}::${category}`] ?? 0;
+  }, [byCategory, byDistrictCategory, category, district, totalDoctors]);
 
   const heroSearchQuery = useMemo(() => {
     if (district === "All Wien") {
@@ -386,9 +400,9 @@ export function LandingPage({
                 className="w-full bg-transparent text-sm outline-none"
                 aria-label="Bezirk waehlen"
               >
-                  {(availableDoctorDistricts.length > 0 ? availableDoctorDistricts : fallbackDistricts).map((item) => (
+                {(availableDoctorDistricts.length > 0 ? availableDoctorDistricts : fallbackDistricts).map((item) => (
                   <option key={item} value={item}>
-                    Bezirk waehlen ({item})
+                    {item}
                   </option>
                 ))}
               </select>
@@ -412,7 +426,7 @@ export function LandingPage({
               >
                 {availableCategories.map((item) => (
                   <option key={item} value={item}>
-                    Fachbereich ({item})
+                    {item}
                   </option>
                 ))}
               </select>
@@ -427,7 +441,7 @@ export function LandingPage({
           </div>
 
           <p className="mt-3 text-sm text-slate-500">
-            Auswahl: <span className="font-semibold text-slate-700">{heroSummary}</span>
+            Auswahl: <span className="font-semibold text-slate-700">{heroSummary}</span> · {heroDoctorCount} Aerzte
           </p>
         </section>
 
