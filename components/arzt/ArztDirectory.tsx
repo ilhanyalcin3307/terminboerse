@@ -15,30 +15,40 @@ import {
 import { AppointmentRequestModal } from "@/components/arzt/AppointmentRequestModal";
 import { DevAnalyticsPanel } from "@/components/analytics/DevAnalyticsPanel";
 import { trackEvent } from "@/lib/analytics";
-import { getGoogleMapsUrl, type DoctorRecord } from "@/lib/doctors";
+import { getGoogleMapsUrl, normalizeDoctorSearchText, type DoctorRecord } from "@/lib/doctors";
 
 const ALL_SPECIALTIES = "Alle Fachbereiche";
 const ALL_DISTRICTS = "Alle Bezirke";
+const PAGE_SIZE = 24;
 
-function normalizeText(value: string) {
-  return value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .replace(/ae/g, "a")
-    .replace(/oe/g, "o")
-    .replace(/ue/g, "u");
-}
+type ArztDirectoryProps = {
+  initialDoctors?: DoctorRecord[];
+  initialSearchQuery?: string;
+  initialSelectedSpecialty?: string;
+  initialSelectedDistrict?: string;
+};
 
-function tokenizeSearch(value: string) {
-  return normalizeText(value)
-    .split(/[^\p{L}\p{N}]+/u)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
+type DoctorsApiPayload = {
+  doctors?: DoctorRecord[];
+  pagination?: {
+    total?: number;
+    page?: number;
+    pageSize?: number;
+    totalPages?: number;
+  };
+  facets?: {
+    districts?: string[];
+    specialties?: string[];
+  };
+  stats?: {
+    totalDoctors?: number;
+    totalWithPhone?: number;
+    totalSpecialties?: number;
+  };
+};
 
 function parseDistrictFromSearch(query: string, districts: string[]) {
-  const normalizedQuery = normalizeText(query);
+  const normalizedQuery = normalizeDoctorSearchText(query);
   const districtMatch = normalizedQuery.match(/\b(0?[1-9]|1\d|2[0-3])\s*\.?\s*(bezirk)?\b/);
   if (!districtMatch) {
     return undefined;
@@ -50,15 +60,15 @@ function parseDistrictFromSearch(query: string, districts: string[]) {
   }
 
   const districtLabel = `${String(districtNumber).padStart(2, "0")}. Bezirk`;
-  return districts.find((item) => normalizeText(item) === normalizeText(districtLabel));
+  return districts.find((item) => normalizeDoctorSearchText(item) === normalizeDoctorSearchText(districtLabel));
 }
 
 function parseSpecialtyFromSearch(query: string, specialties: string[]) {
-  const normalizedQuery = normalizeText(query);
+  const normalizedQuery = normalizeDoctorSearchText(query);
   const specialtyOptions = specialties.filter((item) => item !== ALL_SPECIALTIES);
 
   const directOrthopedicsMatch = specialtyOptions.find((item) => {
-    const normalized = normalizeText(item);
+    const normalized = normalizeDoctorSearchText(item);
     if (!normalized.includes("orthop")) {
       return false;
     }
@@ -69,26 +79,18 @@ function parseSpecialtyFromSearch(query: string, specialties: string[]) {
     return directOrthopedicsMatch;
   }
 
-  const byOptionName = specialtyOptions.find((item) => {
-    const normalized = normalizeText(item);
+  return specialtyOptions.find((item) => {
+    const normalized = normalizeDoctorSearchText(item);
     return normalized.length >= 4 && normalizedQuery.includes(normalized);
   });
-
-  return byOptionName;
 }
 
-function parseSmartInitialFilters(
-  query: string,
-  districts: string[],
-  specialties: string[],
-  fallbackDistrict: string,
-  fallbackSpecialty: string,
-) {
+function parseSmartInitialFilters(query: string, districts: string[], specialties: string[]) {
   const trimmedQuery = query.trim();
   if (trimmedQuery === "") {
     return {
-      selectedDistrict: fallbackDistrict,
-      selectedSpecialty: fallbackSpecialty,
+      selectedDistrict: ALL_DISTRICTS,
+      selectedSpecialty: ALL_SPECIALTIES,
       searchQuery: "",
     };
   }
@@ -114,13 +116,6 @@ function parseSmartInitialFilters(
   };
 }
 
-type ArztDirectoryProps = {
-  initialDoctors?: DoctorRecord[];
-  initialSearchQuery?: string;
-  initialSelectedSpecialty?: string;
-  initialSelectedDistrict?: string;
-};
-
 export function ArztDirectory({
   initialDoctors = [],
   initialSearchQuery = "",
@@ -128,86 +123,118 @@ export function ArztDirectory({
   initialSelectedDistrict = ALL_DISTRICTS,
 }: ArztDirectoryProps) {
   const router = useRouter();
+
   const [doctors, setDoctors] = useState<DoctorRecord[]>(initialDoctors);
-  const [isLoading, setIsLoading] = useState(initialDoctors.length === 0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const [specialties, setSpecialties] = useState<string[]>([ALL_SPECIALTIES]);
+  const [districts, setDistricts] = useState<string[]>([ALL_DISTRICTS]);
+
+  const [totalMatches, setTotalMatches] = useState(0);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+
+  const [totalDoctors, setTotalDoctors] = useState(0);
+  const [doctorsWithPhone, setDoctorsWithPhone] = useState(0);
+  const [totalSpecialties, setTotalSpecialties] = useState(0);
+
+  const [selectedSpecialty, setSelectedSpecialty] = useState(initialSelectedSpecialty);
+  const [selectedDistrict, setSelectedDistrict] = useState(initialSelectedDistrict);
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
+  const [smartParsingApplied, setSmartParsingApplied] = useState(initialSearchQuery.trim() === "");
 
   useEffect(() => {
-    if (initialDoctors.length > 0) {
-      return;
-    }
+    const timeoutId = window.setTimeout(() => {
+      const controller = new AbortController();
 
-    let cancelled = false;
+      async function loadDoctors() {
+        setIsLoading(true);
+        setErrorMessage("");
 
-    async function loadDoctors() {
-      try {
-        const response = await fetch("/api/doctors", { cache: "no-store" });
-        const payload = (await response.json()) as { doctors?: DoctorRecord[] };
-        if (!cancelled) {
+        try {
+          const params = new URLSearchParams({
+            q: searchQuery,
+            district: selectedDistrict,
+            specialty: selectedSpecialty,
+            page: String(page),
+            pageSize: String(PAGE_SIZE),
+          });
+
+          const response = await fetch(`/api/doctors?${params.toString()}`, {
+            cache: "no-store",
+            signal: controller.signal,
+          });
+
+          if (!response.ok) {
+            throw new Error(`Doctors API failed with ${response.status}`);
+          }
+
+          const payload = (await response.json()) as DoctorsApiPayload;
+
+          const nextDistricts = payload.facets?.districts;
+          const nextSpecialties = payload.facets?.specialties;
+          const resolvedDistricts = Array.isArray(nextDistricts) && nextDistricts.length > 0 ? nextDistricts : [ALL_DISTRICTS];
+          const resolvedSpecialties = Array.isArray(nextSpecialties) && nextSpecialties.length > 0 ? nextSpecialties : [ALL_SPECIALTIES];
+
+          if (!smartParsingApplied && initialSearchQuery.trim() !== "") {
+            const parsed = parseSmartInitialFilters(initialSearchQuery, resolvedDistricts, resolvedSpecialties);
+            const shouldRequery =
+              parsed.selectedDistrict !== selectedDistrict ||
+              parsed.selectedSpecialty !== selectedSpecialty ||
+              parsed.searchQuery !== searchQuery ||
+              page !== 1;
+
+            setSmartParsingApplied(true);
+
+            if (shouldRequery) {
+              setSelectedDistrict(parsed.selectedDistrict);
+              setSelectedSpecialty(parsed.selectedSpecialty);
+              setSearchQuery(parsed.searchQuery);
+              setPage(1);
+              setDistricts(resolvedDistricts);
+              setSpecialties(resolvedSpecialties);
+              return;
+            }
+          }
+
           setDoctors(Array.isArray(payload.doctors) ? payload.doctors : []);
-        }
-      } catch (error) {
-        console.error("Arztdaten konnten nicht geladen werden", error);
-        if (!cancelled) {
+          setTotalMatches(payload.pagination?.total ?? 0);
+          setPage(payload.pagination?.page ?? 1);
+          setTotalPages(payload.pagination?.totalPages ?? 1);
+          setDistricts(resolvedDistricts);
+          setSpecialties(resolvedSpecialties);
+
+          setTotalDoctors(payload.stats?.totalDoctors ?? 0);
+          setDoctorsWithPhone(payload.stats?.totalWithPhone ?? 0);
+          setTotalSpecialties(payload.stats?.totalSpecialties ?? 0);
+        } catch (error) {
+          if (error instanceof Error && error.name === "AbortError") {
+            return;
+          }
+          console.error("Arztdaten konnten nicht geladen werden", error);
           setDoctors([]);
-        }
-      } finally {
-        if (!cancelled) {
+          setTotalMatches(0);
+          setTotalPages(1);
+          setErrorMessage("Arztdaten konnten nicht geladen werden. Bitte versuche es erneut.");
+        } finally {
           setIsLoading(false);
         }
       }
-    }
 
-    void loadDoctors();
+      void loadDoctors();
+
+      return () => {
+        controller.abort();
+      };
+    }, 220);
 
     return () => {
-      cancelled = true;
+      window.clearTimeout(timeoutId);
     };
-  }, [initialDoctors]);
-
-  const specialties = useMemo(
-    () => [ALL_SPECIALTIES, ...Array.from(new Set(doctors.map((item) => item.specialty))).sort((a, b) => a.localeCompare(b))],
-    [doctors],
-  );
-
-  const districts = useMemo(
-    () => [ALL_DISTRICTS, ...Array.from(new Set(doctors.map((item) => item.district))).sort((a, b) => a.localeCompare(b))],
-    [doctors],
-  );
-
-  const fallbackSelectedSpecialty = specialties.includes(initialSelectedSpecialty) ? initialSelectedSpecialty : ALL_SPECIALTIES;
-  const fallbackSelectedDistrict = districts.includes(initialSelectedDistrict) ? initialSelectedDistrict : ALL_DISTRICTS;
-
-  const smartInitialFilters = useMemo(
-    () =>
-      parseSmartInitialFilters(
-        initialSearchQuery,
-        districts,
-        specialties,
-        fallbackSelectedDistrict,
-        fallbackSelectedSpecialty,
-      ),
-    [districts, fallbackSelectedDistrict, fallbackSelectedSpecialty, initialSearchQuery, specialties],
-  );
-
-  const [selectedSpecialty, setSelectedSpecialty] = useState(smartInitialFilters.selectedSpecialty);
-  const [selectedDistrict, setSelectedDistrict] = useState(smartInitialFilters.selectedDistrict);
-  const [searchQuery, setSearchQuery] = useState(smartInitialFilters.searchQuery);
+  }, [initialSearchQuery, page, searchQuery, selectedDistrict, selectedSpecialty, smartParsingApplied]);
 
   const featuredSpecialties = useMemo(() => specialties.slice(1, 7), [specialties]);
-
-  const filteredDoctors = useMemo(() => {
-    const tokens = tokenizeSearch(searchQuery);
-
-    return doctors.filter((item) => {
-      const bySpecialty = selectedSpecialty === ALL_SPECIALTIES || item.specialty === selectedSpecialty;
-      const byDistrict = selectedDistrict === ALL_DISTRICTS || item.district === selectedDistrict;
-      const haystack = tokenizeSearch(`${item.name} ${item.address} ${item.specialty} ${item.district}`).join(" ");
-      const bySearch = tokens.length === 0 || tokens.every((token) => haystack.includes(token));
-      return bySpecialty && byDistrict && bySearch;
-    });
-  }, [doctors, searchQuery, selectedDistrict, selectedSpecialty]);
-
-  const doctorsWithPhone = useMemo(() => doctors.filter((item) => item.phone).length, [doctors]);
 
   function trackDoctorAction(doctor: DoctorRecord, action: "phone" | "website" | "route") {
     trackEvent("doctor_action_clicked", {
@@ -246,7 +273,7 @@ export function ArztDirectory({
           <div className="mt-6 grid gap-3 md:grid-cols-3">
             <article className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
               <p className="text-xs font-semibold text-sky-700">Arztstandorte</p>
-              <p className="mt-2 text-2xl font-bold text-slate-900">{doctors.length}</p>
+              <p className="mt-2 text-2xl font-bold text-slate-900">{totalDoctors}</p>
             </article>
             <article className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
               <p className="text-xs font-semibold text-emerald-700">Mit Telefon</p>
@@ -254,7 +281,7 @@ export function ArztDirectory({
             </article>
             <article className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
               <p className="text-xs font-semibold text-rose-700">Fachbereiche</p>
-              <p className="mt-2 text-2xl font-bold text-slate-900">{specialties.length - 1}</p>
+              <p className="mt-2 text-2xl font-bold text-slate-900">{totalSpecialties}</p>
             </article>
           </div>
 
@@ -262,6 +289,7 @@ export function ArztDirectory({
             <button
               onClick={() => {
                 setSelectedSpecialty(ALL_SPECIALTIES);
+                setPage(1);
                 trackEvent("specialty_selected", { source: "arzt-quick-filter", specialty: ALL_SPECIALTIES });
               }}
               className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
@@ -275,6 +303,7 @@ export function ArztDirectory({
                 key={item}
                 onClick={() => {
                   setSelectedSpecialty(item);
+                  setPage(1);
                   trackEvent("specialty_selected", { source: "arzt-quick-filter", specialty: item });
                 }}
                 className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
@@ -295,6 +324,7 @@ export function ArztDirectory({
                   setSearchQuery(event.target.value);
                   setSelectedDistrict(ALL_DISTRICTS);
                   setSelectedSpecialty(ALL_SPECIALTIES);
+                  setPage(1);
                 }}
                 placeholder="Nach Name, Adresse oder Fachbereich suchen"
                 className="w-full bg-transparent outline-none"
@@ -305,6 +335,7 @@ export function ArztDirectory({
               onChange={(event) => {
                 const nextDistrict = event.target.value;
                 setSelectedDistrict(nextDistrict);
+                setPage(1);
                 trackEvent("district_selected", { source: "arzt-filter", district: nextDistrict });
               }}
               className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
@@ -320,6 +351,7 @@ export function ArztDirectory({
               onChange={(event) => {
                 const nextSpecialty = event.target.value;
                 setSelectedSpecialty(nextSpecialty);
+                setPage(1);
                 trackEvent("specialty_selected", { source: "arzt-filter", specialty: nextSpecialty });
               }}
               className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
@@ -333,7 +365,7 @@ export function ArztDirectory({
           </div>
 
           <p className="mt-4 text-sm text-slate-500">
-            Treffer: <span className="font-semibold text-slate-700">{filteredDoctors.length}</span>
+            Treffer: <span className="font-semibold text-slate-700">{totalMatches}</span>
           </p>
         </section>
 
@@ -344,7 +376,13 @@ export function ArztDirectory({
             </article>
           ) : null}
 
-          {!isLoading ? filteredDoctors.map((doctor) => (
+          {errorMessage ? (
+            <article className="rounded-2xl border border-rose-200 bg-rose-50 p-8 text-center text-rose-700 xl:col-span-2">
+              {errorMessage}
+            </article>
+          ) : null}
+
+          {!isLoading ? doctors.map((doctor) => (
             <article
               key={doctor.id}
               onClick={() => {
@@ -456,12 +494,34 @@ export function ArztDirectory({
             </article>
           )) : null}
 
-          {!isLoading && filteredDoctors.length === 0 ? (
+          {!isLoading && doctors.length === 0 && !errorMessage ? (
             <article className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-600 xl:col-span-2">
               Keine Treffer fuer diese Kombination. Bitte waehle einen anderen Bezirk, Fachbereich oder Suchbegriff.
             </article>
           ) : null}
         </section>
+
+        {!isLoading && totalPages > 1 ? (
+          <section className="mt-6 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+            <button
+              disabled={page <= 1}
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              className="rounded-lg border border-slate-300 px-3 py-1.5 font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Zurueck
+            </button>
+            <p>
+              Seite <span className="font-semibold text-slate-800">{page}</span> von <span className="font-semibold text-slate-800">{totalPages}</span>
+            </p>
+            <button
+              disabled={page >= totalPages}
+              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+              className="rounded-lg border border-slate-300 px-3 py-1.5 font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Weiter
+            </button>
+          </section>
+        ) : null}
       </main>
       <DevAnalyticsPanel />
     </>

@@ -51,6 +51,23 @@ type GeoJsonFeatureCollection = {
   features?: unknown;
 };
 
+export function normalizeDoctorSearchText(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/ae/g, "a")
+    .replace(/oe/g, "o")
+    .replace(/ue/g, "u");
+}
+
+export function tokenizeDoctorSearch(value: string) {
+  return normalizeDoctorSearchText(value)
+    .split(/[^\p{L}\p{N}]+/u)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function asText(value: unknown) {
   if (typeof value === "string") {
     return value.trim();
