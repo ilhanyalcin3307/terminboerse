@@ -15,9 +15,9 @@ const sora = Sora({
 });
 
 export const metadata: Metadata = {
-  title: "TerminBoerse.at | Storno-Termine in Wien",
+  title: "Terminbörse.at | Storno-Termine in Wien",
   description:
-    "Die Boerse fuer kurzfristige Storno-Termine in Wien. Schnell, einfach und kostenfrei.",
+    "Die Börse für kurzfristige Storno-Termine in Wien. Schnell, einfach und kostenfrei.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

@@ -125,7 +125,7 @@ export function AppointmentRequestModal({
               <button
                 onClick={() => setIsOpen(false)}
                 className="rounded-full border border-slate-200 p-1.5 text-slate-500 transition hover:bg-slate-100"
-                aria-label="Modal schliessen"
+                aria-label="Modal schließen"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -133,8 +133,8 @@ export function AppointmentRequestModal({
 
             {isSuccess ? (
               <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">
-                <p className="font-semibold">Vielen Dank! Deine Termin-Anfrage wurde erfolgreich uebermittelt.</p>
-                <p className="mt-2 text-sm">Wir melden uns, sobald eine Rueckmeldung zur Verfuegbarkeit vorliegt.</p>
+                <p className="font-semibold">Vielen Dank! Deine Termin-Anfrage wurde erfolgreich übermittelt.</p>
+                <p className="mt-2 text-sm">Wir melden uns, sobald eine Rückmeldung zur Verfügbarkeit vorliegt.</p>
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-3">

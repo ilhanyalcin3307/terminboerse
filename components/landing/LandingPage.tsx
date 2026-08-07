@@ -42,7 +42,7 @@ type LeadEntry = {
 const fallbackDistricts = [
   "All Wien",
   "01. Innere Stadt",
-  "03. Landstrasse",
+  "03. Landstraße",
   "10. Favoriten",
   "21. Floridsdorf",
   "22. Donaustadt",
@@ -53,7 +53,7 @@ const fallbackCategories = [
   "Dermatologie",
   "Zahnmedizin",
   "Augenheilkunde",
-  "Orthopaedie",
+  "Orthopädie",
 ];
 
 const sectorCards = [
@@ -68,7 +68,7 @@ const sectorCards = [
   {
     title: "Recht & Finanzen",
     href: "/",
-    badge: "Demnaechst",
+    badge: "Demnächst",
     icon: BriefcaseBusiness,
     active: false,
     category: "Recht",
@@ -76,7 +76,7 @@ const sectorCards = [
   {
     title: "Beauty & Wellness",
     href: "/",
-    badge: "Demnaechst",
+    badge: "Demnächst",
     icon: Sparkles,
     active: false,
     category: "Beauty",
@@ -122,21 +122,21 @@ export function LandingPage({
         title: "OEGK Dermatologie",
         time: "Heute 14:30 Uhr",
         category: "Dermatologie",
-        address: "Favoritenstrasse 124, 1100 Wien",
+        address: "Favoritenstraße 124, 1100 Wien",
       },
       {
         district: "03. Bezirk",
         title: "Wahlarzt Augenheilkunde",
         time: "Heute 16:15 Uhr",
         category: "Augenheilkunde",
-        address: "Landstrasser Hauptstrasse 58, 1030 Wien",
+        address: "Landstraßer Hauptstraße 58, 1030 Wien",
       },
       {
         district: "21. Bezirk",
         title: "OEGK Zahnmedizin",
         time: "Morgen 09:00 Uhr",
         category: "Zahnmedizin",
-        address: "Bruenner Strasse 44, 1210 Wien",
+        address: "Brünner Straße 44, 1210 Wien",
       },
     ];
   }, [incomingTickerItems]);
@@ -239,7 +239,7 @@ export function LandingPage({
     event.preventDefault();
 
     if (!isValidContact(contactInput)) {
-      setFormError("Bitte gib eine gueltige E-Mail-Adresse oder WhatsApp-Nummer ein.");
+      setFormError("Bitte gib eine gültige E-Mail-Adresse oder WhatsApp-Nummer ein.");
       return;
     }
 
@@ -288,7 +288,7 @@ export function LandingPage({
     event.preventDefault();
 
     if (!isValidContact(waitlistContact)) {
-      setWaitlistError("Bitte gib eine gueltige E-Mail-Adresse oder WhatsApp-Nummer ein.");
+      setWaitlistError("Bitte gib eine gültige E-Mail-Adresse oder WhatsApp-Nummer ein.");
       return;
     }
 
@@ -328,7 +328,7 @@ export function LandingPage({
             Wochenlang warten? Heute noch zum Arzt in Wien!
           </h1>
           <p className="mt-4 max-w-3xl text-base text-slate-600 md:text-lg">
-            Die Boerse fuer kurzfristige Arzttermine in Wien. Schnell, einfach & kostenfrei.
+            Die Börse für kurzfristige Arzttermine in Wien. Schnell, einfach & kostenfrei.
           </p>
 
           <div className="mt-7 grid gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm md:grid-cols-[1fr_1fr_auto] md:gap-4 md:p-4">
@@ -346,7 +346,7 @@ export function LandingPage({
                   });
                 }}
                 className="w-full bg-transparent text-sm outline-none"
-                aria-label="Bezirk waehlen"
+                aria-label="Bezirk wählen"
               >
                 {(availableDoctorDistricts.length > 0 ? availableDoctorDistricts : fallbackDistricts).map((item) => (
                   <option key={item} value={item}>
@@ -370,7 +370,7 @@ export function LandingPage({
                   });
                 }}
                 className="w-full bg-transparent text-sm outline-none"
-                aria-label="Fachbereich waehlen"
+                aria-label="Fachbereich wählen"
               >
                 {availableCategories.map((item) => (
                   <option key={item} value={item}>
@@ -389,7 +389,7 @@ export function LandingPage({
           </div>
 
           <p className="mt-3 text-sm text-slate-500">
-            Auswahl: <span className="font-semibold text-slate-700">{heroSummary}</span> · {heroDoctorCount} Aerzte
+            Auswahl: <span className="font-semibold text-slate-700">{heroSummary}</span> · {heroDoctorCount} Ärzte
           </p>
         </section>
 
@@ -474,7 +474,7 @@ export function LandingPage({
             <article className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <BellRing className="h-5 w-5 text-sky-600" />
               <h3 className="mt-3 font-semibold text-slate-900">1. Benachrichtigung aktivieren</h3>
-              <p className="mt-2 text-sm text-slate-600">Waehle Fachbereich und Bezirk.</p>
+              <p className="mt-2 text-sm text-slate-600">Wähle Fachbereich und Bezirk.</p>
             </article>
             <article className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <Mail className="h-5 w-5 text-sky-600" />
@@ -504,7 +504,7 @@ export function LandingPage({
           <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
             <div className="mb-4 flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-xl font-bold text-slate-900">Sofort-Benachrichtigung fuer freie Termine aktivieren</h3>
+                <h3 className="text-xl font-bold text-slate-900">Sofort-Benachrichtigung für freie Termine aktivieren</h3>
                 <p className="mt-1 text-sm text-slate-600">
                   Aufgrund hoher Nachfrage vergeben wir freie Storno-Termine per WhatsApp/E-Mail in Echtzeit.
                 </p>
@@ -512,7 +512,7 @@ export function LandingPage({
               <button
                 onClick={() => setLeadModalOpen(false)}
                 className="rounded-full border border-slate-200 p-1.5 text-slate-500 transition hover:bg-slate-100"
-                aria-label="Modal schliessen"
+                aria-label="Modal schließen"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -525,7 +525,7 @@ export function LandingPage({
                   onClick={() => setLeadModalOpen(false)}
                   className="mt-4 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
                 >
-                  Schliessen
+                  Schließen
                 </button>
               </div>
             ) : (
@@ -603,13 +603,13 @@ export function LandingPage({
               <div>
                 <h3 className="text-xl font-bold text-slate-900">Warteliste beitreten</h3>
                 <p className="mt-1 text-sm text-slate-600">
-                  {waitlistCategory}: Wir informieren dich sofort, sobald dieser Bereich verfuegbar ist.
+                  {waitlistCategory}: Wir informieren dich sofort, sobald dieser Bereich verfügbar ist.
                 </p>
               </div>
               <button
                 onClick={() => setWaitlistModalOpen(false)}
                 className="rounded-full border border-slate-200 p-1.5 text-slate-500 transition hover:bg-slate-100"
-                aria-label="Modal schliessen"
+                aria-label="Modal schließen"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -617,7 +617,7 @@ export function LandingPage({
 
             {waitlistSuccess ? (
               <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">
-                <p className="font-semibold">Danke! Du stehst jetzt auf der Warteliste fuer {waitlistCategory}.</p>
+                <p className="font-semibold">Danke! Du stehst jetzt auf der Warteliste für {waitlistCategory}.</p>
               </div>
             ) : (
               <form onSubmit={handleWaitlistSubmit} className="space-y-3">

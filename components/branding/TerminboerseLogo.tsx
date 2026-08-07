@@ -31,7 +31,7 @@ export function TerminboerseLogo({ compact = false }: TerminboerseLogoProps) {
       </svg>
       <span className="text-xl font-extrabold tracking-tight text-slate-900">
         Termin
-        <span className="text-sky-600">Boerse</span>
+        <span className="text-sky-600">börse</span>
         <span className="ml-0.5 text-xs text-slate-500">.at</span>
       </span>
     </div>

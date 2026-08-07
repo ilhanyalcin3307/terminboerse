@@ -414,7 +414,7 @@ export function ArztDirectory({
                 </p>
                 <p className="inline-flex items-center gap-2">
                   <ShieldCheck className="h-4 w-4 text-sky-600" />
-                  Naechster Slot: {doctor.nextSlot ?? "Auf Anfrage"}
+                  Nächster Slot: {doctor.nextSlot ?? "Auf Anfrage"}
                 </p>
                 {doctor.phone ? (
                   <p className="inline-flex items-center gap-2">
@@ -496,7 +496,7 @@ export function ArztDirectory({
 
           {!isLoading && doctors.length === 0 && !errorMessage ? (
             <article className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-600 xl:col-span-2">
-              Keine Treffer fuer diese Kombination. Bitte waehle einen anderen Bezirk, Fachbereich oder Suchbegriff.
+              Keine Treffer für diese Kombination. Bitte wähle einen anderen Bezirk, Fachbereich oder Suchbegriff.
             </article>
           ) : null}
         </section>
@@ -508,7 +508,7 @@ export function ArztDirectory({
               onClick={() => setPage((current) => Math.max(1, current - 1))}
               className="rounded-lg border border-slate-300 px-3 py-1.5 font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Zurueck
+              Zurück
             </button>
             <p>
               Seite <span className="font-semibold text-slate-800">{page}</span> von <span className="font-semibold text-slate-800">{totalPages}</span>

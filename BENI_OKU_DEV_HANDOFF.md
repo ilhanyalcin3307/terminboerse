@@ -77,6 +77,10 @@ Not:
 2. Tum sayfalarda tek header/footer
 3. Landing hero sade metin + secime gore doktor sayisi
 4. Filtre bug fix (default Alle, smart parse, tokenized match)
+5. UI Almanca lokalizasyon duzeltmesi
+   - Ekrandaki metinlerde oe/ae/ue yazimlari uygun sekilde ö/ä/ü/ß olarak guncellendi
+   - Branding gorunumu TerminBoerse.at yerine Terminbörse.at olacak sekilde duzeltildi
+   - URL ve teknik degisken adlari (terminboerse.at) bilincli olarak ayni birakildi
 
 ## 8) Bekleyen / Sonraki Isler
 1. Google Places API entegrasyonu (SONRA YAPILACAK)

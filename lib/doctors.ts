@@ -121,7 +121,7 @@ function normalizeSpecialty(value: string) {
     return "Hausarzt / Allgemeinmedizin";
   }
   if (normalized.includes("orthopaed") || normalized.includes("orthopad") || normalized.includes("orthop")) {
-    return "Orthopaedie";
+    return "Orthopädie";
   }
   if (
     normalized.includes("frauenheilkunde") ||
@@ -129,7 +129,7 @@ function normalizeSpecialty(value: string) {
     normalized.includes("gynak") ||
     normalized.includes("geburtshilfe")
   ) {
-    return "Gynaekologie / Frauenarzt";
+    return "Gynäkologie / Frauenarzt";
   }
   if (normalized.includes("dermat") || normalized.includes("haut")) {
     return "Dermatologie";
@@ -168,7 +168,7 @@ function normalizeSpecialty(value: string) {
     return "Kardiologie";
   }
   if (normalized.includes("anasth") || normalized.includes("anaesth")) {
-    return "Anaesthesie";
+    return "Anästhesie";
   }
 
   return text;
@@ -285,8 +285,8 @@ export function getDoctorSpecialties(doctors: DoctorRecord[]) {
   const unique = Array.from(new Set(doctors.map((item) => item.specialty)));
   const preferredOrder = [
     "Hausarzt / Allgemeinmedizin",
-    "Orthopaedie",
-    "Gynaekologie / Frauenarzt",
+    "Orthopädie",
+    "Gynäkologie / Frauenarzt",
     "Dermatologie",
     "Augenheilkunde",
     "Zahnmedizin",
@@ -356,8 +356,8 @@ export function getDoctorWorkingHours(doctor: DoctorRecord): WorkingHoursEntry[]
     {
       label: "Aktueller Hinweis",
       value: doctor.website
-        ? "Bitte pruefe die Praxis-Website oder kontaktiere die Ordination fuer exakte Sprechzeiten."
-        : "Bitte kontaktiere die Ordination fuer exakte Sprechzeiten.",
+        ? "Bitte prüfe die Praxis-Website oder kontaktiere die Ordination für exakte Sprechzeiten."
+        : "Bitte kontaktiere die Ordination für exakte Sprechzeiten.",
     },
   ];
 }

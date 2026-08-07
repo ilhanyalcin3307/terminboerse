@@ -26,23 +26,23 @@ export async function POST(request: Request) {
     const fallbackEmail = process.env.LEAD_FALLBACK_EMAIL ?? "kontakt@terminboerse.at";
     const recipient = doctor.email ?? fallbackEmail;
     const claimUrl = `${siteUrl}/arzt/${encodeURIComponent(doctor.id)}?claim=true`;
-    const fromEmail = process.env.RESEND_FROM_EMAIL ?? "TerminBoerse <onboarding@resend.dev>";
+    const fromEmail = process.env.RESEND_FROM_EMAIL ?? "Terminbörse <onboarding@resend.dev>";
 
-    const subject = `Neue Termin-Anfrage fuer ${doctor.name} ueber TerminBoerse.at`;
+    const subject = `Neue Termin-Anfrage für ${doctor.name} über Terminbörse.at`;
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #0f172a;">
-        <h2 style="margin-bottom: 12px;">Neue Termin-Anfrage ueber TerminBoerse.at</h2>
+        <h2 style="margin-bottom: 12px;">Neue Termin-Anfrage über Terminbörse.at</h2>
         <p>Sehr geehrte/r Frau/Herr Dr. ${doctor.name},</p>
-        <p>ein Patient moechte einen Termin ueber TerminBoerse.at anfragen.</p>
+        <p>ein Patient möchte einen Termin über Terminbörse.at anfragen.</p>
         <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; padding: 16px; margin: 20px 0;">
           <p><strong>Name:</strong> ${body.patientName}</p>
           <p><strong>E-Mail:</strong> ${body.patientEmail}</p>
           <p><strong>Telefon:</strong> ${body.patientPhone}</p>
           <p><strong>Fachbereich:</strong> ${doctor.specialty}</p>
           <p><strong>Standort:</strong> ${doctor.address}</p>
-          <p><strong>Notiz:</strong> ${body.note?.trim() ? body.note : "Keine zusaetzliche Notiz"}</p>
+          <p><strong>Notiz:</strong> ${body.note?.trim() ? body.note : "Keine zusätzliche Notiz"}</p>
         </div>
-        <p>Sie koennen dem Patienten direkt antworten oder Ihr Profil auf TerminBoerse.at kostenlos beanspruchen.</p>
+        <p>Sie können dem Patienten direkt antworten oder Ihr Profil auf Terminbörse.at kostenlos beanspruchen.</p>
         <p style="margin: 24px 0;">
           <a href="${claimUrl}" style="display: inline-block; background: #0284c7; color: white; text-decoration: none; padding: 12px 18px; border-radius: 999px; font-weight: bold;">
             Profil jetzt beanspruchen

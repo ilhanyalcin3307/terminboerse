@@ -37,7 +37,7 @@ export default async function ArztDetailPage({ params, searchParams }: ArztDetai
     <main className="mx-auto w-full max-w-6xl px-4 pb-16 pt-8 sm:px-6 lg:px-8">
       <div className="flex items-center justify-between gap-4">
         <Link href="/arzt" className="text-sm font-semibold text-sky-700 hover:underline">
-          Zurueck zur Arztliste
+          Zurück zur Arztliste
         </Link>
       </div>
 
@@ -46,7 +46,7 @@ export default async function ArztDetailPage({ params, searchParams }: ArztDetai
           <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">Claim Your Profile</p>
           <h1 className="mt-2 text-2xl font-extrabold text-slate-900">Profil kostenlos beanspruchen</h1>
           <p className="mt-2 max-w-3xl text-slate-600">
-            Verwalte Verfuegbarkeiten, erhalte direkte Termin-Anfragen und praesentere deine Ordination auf TerminBoerse.at.
+            Verwalte Verfügbarkeiten, erhalte direkte Termin-Anfragen und präsentiere deine Ordination auf Terminbörse.at.
           </p>
           <a
             href={`mailto:claim@terminboerse.at?subject=${encodeURIComponent(`Profil beanspruchen: ${doctor.name}`)}`}
@@ -75,10 +75,10 @@ export default async function ArztDetailPage({ params, searchParams }: ArztDetai
               </p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Naechster Kontaktweg</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Nächster Kontaktweg</p>
               <p className="mt-2 inline-flex items-center gap-2 text-sm text-slate-700">
                 <ShieldCheck className="h-4 w-4 text-sky-600" />
-                {doctor.phone ? "Telefonisch erreichbar" : "Rueckmeldung ueber Anfrage"}
+                {doctor.phone ? "Telefonisch erreichbar" : "Rückmeldung über Anfrage"}
               </p>
             </div>
           </div>
@@ -141,11 +141,11 @@ export default async function ArztDetailPage({ params, searchParams }: ArztDetai
                 className="h-full w-full border-0"
                 loading="lazy"
                 referrerPolicy="no-referrer-when-downgrade"
-                title={`Karte fuer ${doctor.name}`}
+                title={`Karte für ${doctor.name}`}
               />
             </div>
             <div className="p-4 text-sm text-slate-600">
-              Standort in Wien. Fuer Navigation oeffne direkt Google Maps.
+              Standort in Wien. Für Navigation öffne direkt Google Maps.
             </div>
           </section>
 
@@ -164,7 +164,7 @@ export default async function ArztDetailPage({ params, searchParams }: ArztDetai
           <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
             <h3 className="text-lg font-bold text-slate-900">Direkte Termin-Anfrage</h3>
             <p className="mt-2 text-sm text-slate-600">
-              Nutze das Formular, um deine Anfrage an diese Ordination oder an das TerminBoerse-Team zu senden.
+              Nutze das Formular, um deine Anfrage an diese Ordination oder an das Terminbörse-Team zu senden.
             </p>
             <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
               <p className="inline-flex items-center gap-2">

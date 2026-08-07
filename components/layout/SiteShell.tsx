@@ -72,7 +72,7 @@ export function SiteShell({ children }: SiteShellProps) {
             <Link href="/datenschutz" className="hover:text-sky-700">Datenschutz</Link>
             <Link href="/kontakt" className="hover:text-sky-700">Kontakt</Link>
           </div>
-          <p>© 2026 TerminBoerse.at - Made with ❤️ in Wien.</p>
+          <p>© 2026 Terminbörse.at - Made with ❤️ in Wien.</p>
         </div>
       </footer>
 
@@ -82,12 +82,12 @@ export function SiteShell({ children }: SiteShellProps) {
             <div className="mb-4 flex items-start justify-between gap-4">
               <div>
                 <h3 className="text-xl font-bold text-slate-900">Termin anbieten</h3>
-                <p className="mt-1 text-sm text-slate-600">Fuer Arztpraxen und Handwerksbetriebe: Wir melden uns zeitnah bei dir.</p>
+                <p className="mt-1 text-sm text-slate-600">Für Arztpraxen und Handwerksbetriebe: Wir melden uns zeitnah bei dir.</p>
               </div>
               <button
                 onClick={() => setProviderModalOpen(false)}
                 className="rounded-full border border-slate-200 p-1.5 text-slate-500 transition hover:bg-slate-100"
-                aria-label="Modal schliessen"
+                aria-label="Modal schließen"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -95,7 +95,7 @@ export function SiteShell({ children }: SiteShellProps) {
 
             {providerSuccess ? (
               <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">
-                <p className="font-semibold">Danke! Wir melden uns in Kuerze fuer die Freischaltung.</p>
+                <p className="font-semibold">Danke! Wir melden uns in Kürze für die Freischaltung.</p>
               </div>
             ) : (
               <form onSubmit={handleProviderSubmit} className="space-y-3">
