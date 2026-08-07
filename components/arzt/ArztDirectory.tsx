@@ -17,6 +17,103 @@ import { DevAnalyticsPanel } from "@/components/analytics/DevAnalyticsPanel";
 import { trackEvent } from "@/lib/analytics";
 import { getGoogleMapsUrl, type DoctorRecord } from "@/lib/doctors";
 
+const ALL_SPECIALTIES = "Alle Fachbereiche";
+const ALL_DISTRICTS = "Alle Bezirke";
+
+function normalizeText(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/ae/g, "a")
+    .replace(/oe/g, "o")
+    .replace(/ue/g, "u");
+}
+
+function tokenizeSearch(value: string) {
+  return normalizeText(value)
+    .split(/[^\p{L}\p{N}]+/u)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseDistrictFromSearch(query: string, districts: string[]) {
+  const normalizedQuery = normalizeText(query);
+  const districtMatch = normalizedQuery.match(/\b(0?[1-9]|1\d|2[0-3])\s*\.?\s*(bezirk)?\b/);
+  if (!districtMatch) {
+    return undefined;
+  }
+
+  const districtNumber = Number(districtMatch[1]);
+  if (!Number.isFinite(districtNumber)) {
+    return undefined;
+  }
+
+  const districtLabel = `${String(districtNumber).padStart(2, "0")}. Bezirk`;
+  return districts.find((item) => normalizeText(item) === normalizeText(districtLabel));
+}
+
+function parseSpecialtyFromSearch(query: string, specialties: string[]) {
+  const normalizedQuery = normalizeText(query);
+  const specialtyOptions = specialties.filter((item) => item !== ALL_SPECIALTIES);
+
+  const directOrthopedicsMatch = specialtyOptions.find((item) => {
+    const normalized = normalizeText(item);
+    if (!normalized.includes("orthop")) {
+      return false;
+    }
+    return /(orthop|ortopedi)/.test(normalizedQuery);
+  });
+
+  if (directOrthopedicsMatch) {
+    return directOrthopedicsMatch;
+  }
+
+  const byOptionName = specialtyOptions.find((item) => {
+    const normalized = normalizeText(item);
+    return normalized.length >= 4 && normalizedQuery.includes(normalized);
+  });
+
+  return byOptionName;
+}
+
+function parseSmartInitialFilters(
+  query: string,
+  districts: string[],
+  specialties: string[],
+  fallbackDistrict: string,
+  fallbackSpecialty: string,
+) {
+  const trimmedQuery = query.trim();
+  if (trimmedQuery === "") {
+    return {
+      selectedDistrict: fallbackDistrict,
+      selectedSpecialty: fallbackSpecialty,
+      searchQuery: "",
+    };
+  }
+
+  const parsedDistrict = parseDistrictFromSearch(trimmedQuery, districts);
+  const parsedSpecialty = parseSpecialtyFromSearch(trimmedQuery, specialties);
+
+  let freeText = trimmedQuery;
+  freeText = freeText.replace(/\b(0?[1-9]|1\d|2[0-3])\s*\.?\s*bezirk\b/gi, " ");
+  freeText = freeText.replace(/\b(0?[1-9]|1\d|2[0-3])\s*\./gi, " ");
+
+  if (parsedSpecialty) {
+    const escaped = parsedSpecialty.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    freeText = freeText.replace(new RegExp(escaped, "gi"), " ");
+  }
+
+  freeText = freeText.replace(/\s+/g, " ").trim();
+
+  return {
+    selectedDistrict: parsedDistrict ?? ALL_DISTRICTS,
+    selectedSpecialty: parsedSpecialty ?? ALL_SPECIALTIES,
+    searchQuery: freeText,
+  };
+}
+
 type ArztDirectoryProps = {
   initialDoctors?: DoctorRecord[];
   initialSearchQuery?: string;
@@ -27,8 +124,8 @@ type ArztDirectoryProps = {
 export function ArztDirectory({
   initialDoctors = [],
   initialSearchQuery = "",
-  initialSelectedSpecialty = "Alle Fachbereiche",
-  initialSelectedDistrict = "All Wien",
+  initialSelectedSpecialty = ALL_SPECIALTIES,
+  initialSelectedDistrict = ALL_DISTRICTS,
 }: ArztDirectoryProps) {
   const router = useRouter();
   const [doctors, setDoctors] = useState<DoctorRecord[]>(initialDoctors);
@@ -68,28 +165,44 @@ export function ArztDirectory({
   }, [initialDoctors]);
 
   const specialties = useMemo(
-    () => ["Alle Fachbereiche", ...Array.from(new Set(doctors.map((item) => item.specialty))).sort((a, b) => a.localeCompare(b))],
+    () => [ALL_SPECIALTIES, ...Array.from(new Set(doctors.map((item) => item.specialty))).sort((a, b) => a.localeCompare(b))],
     [doctors],
   );
 
   const districts = useMemo(
-    () => ["All Wien", ...Array.from(new Set(doctors.map((item) => item.district))).sort((a, b) => a.localeCompare(b))],
+    () => [ALL_DISTRICTS, ...Array.from(new Set(doctors.map((item) => item.district))).sort((a, b) => a.localeCompare(b))],
     [doctors],
   );
 
-  const [selectedSpecialty, setSelectedSpecialty] = useState(initialSelectedSpecialty);
-  const [selectedDistrict, setSelectedDistrict] = useState(initialSelectedDistrict);
-  const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
+  const fallbackSelectedSpecialty = specialties.includes(initialSelectedSpecialty) ? initialSelectedSpecialty : ALL_SPECIALTIES;
+  const fallbackSelectedDistrict = districts.includes(initialSelectedDistrict) ? initialSelectedDistrict : ALL_DISTRICTS;
+
+  const smartInitialFilters = useMemo(
+    () =>
+      parseSmartInitialFilters(
+        initialSearchQuery,
+        districts,
+        specialties,
+        fallbackSelectedDistrict,
+        fallbackSelectedSpecialty,
+      ),
+    [districts, fallbackSelectedDistrict, fallbackSelectedSpecialty, initialSearchQuery, specialties],
+  );
+
+  const [selectedSpecialty, setSelectedSpecialty] = useState(smartInitialFilters.selectedSpecialty);
+  const [selectedDistrict, setSelectedDistrict] = useState(smartInitialFilters.selectedDistrict);
+  const [searchQuery, setSearchQuery] = useState(smartInitialFilters.searchQuery);
 
   const featuredSpecialties = useMemo(() => specialties.slice(1, 7), [specialties]);
 
   const filteredDoctors = useMemo(() => {
+    const tokens = tokenizeSearch(searchQuery);
+
     return doctors.filter((item) => {
-      const bySpecialty = selectedSpecialty === "Alle Fachbereiche" || item.specialty === selectedSpecialty;
-      const byDistrict = selectedDistrict === "All Wien" || item.district === selectedDistrict;
-      const bySearch =
-        searchQuery.trim() === "" ||
-        `${item.name} ${item.address} ${item.specialty}`.toLowerCase().includes(searchQuery.trim().toLowerCase());
+      const bySpecialty = selectedSpecialty === ALL_SPECIALTIES || item.specialty === selectedSpecialty;
+      const byDistrict = selectedDistrict === ALL_DISTRICTS || item.district === selectedDistrict;
+      const haystack = tokenizeSearch(`${item.name} ${item.address} ${item.specialty} ${item.district}`).join(" ");
+      const bySearch = tokens.length === 0 || tokens.every((token) => haystack.includes(token));
       return bySpecialty && byDistrict && bySearch;
     });
   }, [doctors, searchQuery, selectedDistrict, selectedSpecialty]);
@@ -148,14 +261,14 @@ export function ArztDirectory({
           <div className="mt-6 flex flex-wrap gap-2">
             <button
               onClick={() => {
-                setSelectedSpecialty("Alle Fachbereiche");
-                trackEvent("specialty_selected", { source: "arzt-quick-filter", specialty: "Alle Fachbereiche" });
+                setSelectedSpecialty(ALL_SPECIALTIES);
+                trackEvent("specialty_selected", { source: "arzt-quick-filter", specialty: ALL_SPECIALTIES });
               }}
               className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                selectedSpecialty === "Alle Fachbereiche" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700"
+                selectedSpecialty === ALL_SPECIALTIES ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700"
               }`}
             >
-              Alle Fachbereiche
+              {ALL_SPECIALTIES}
             </button>
             {featuredSpecialties.map((item) => (
               <button
@@ -178,7 +291,11 @@ export function ArztDirectory({
               <Search className="h-4 w-4 text-sky-600" />
               <input
                 value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
+                onChange={(event) => {
+                  setSearchQuery(event.target.value);
+                  setSelectedDistrict(ALL_DISTRICTS);
+                  setSelectedSpecialty(ALL_SPECIALTIES);
+                }}
                 placeholder="Nach Name, Adresse oder Fachbereich suchen"
                 className="w-full bg-transparent outline-none"
               />

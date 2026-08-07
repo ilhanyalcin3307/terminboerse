@@ -8,7 +8,7 @@ export default async function ArztPage({ searchParams }: ArztPageProps) {
   const params = await searchParams;
   const initialSearchQuery = params.search ?? "";
   const initialSelectedSpecialty = params.category ?? "Alle Fachbereiche";
-  const initialSelectedDistrict = params.district ?? "All Wien";
+  const initialSelectedDistrict = params.district ?? "Alle Bezirke";
 
   return (
     <ArztDirectory
