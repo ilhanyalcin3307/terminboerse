@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import {
   BellRing,
@@ -94,6 +95,7 @@ export function LandingPage({
   doctorDistricts = [],
   tickerItems: incomingTickerItems = [],
 }: LandingPageProps) {
+  const router = useRouter();
   const [leadModalOpen, setLeadModalOpen] = useState(false);
   const [providerModalOpen, setProviderModalOpen] = useState(false);
   const [waitlistModalOpen, setWaitlistModalOpen] = useState(false);
@@ -161,11 +163,30 @@ export function LandingPage({
     return `${district} · ${category}`;
   }, [district, category]);
 
+  const heroSearchQuery = useMemo(() => {
+    if (district === "All Wien") {
+      return category;
+    }
+
+    return `${category} ${district}`.trim();
+  }, [category, district]);
+
   function openProviderModal() {
     setProviderModalOpen(true);
     setProviderSuccess(false);
     trackEvent("cta_clicked", { source: "navbar-provider", category: "provider", district: "all" });
     trackEvent("modal_opened", { source: "navbar-provider", modal: "provider" });
+  }
+
+  function handleHeroSearch() {
+    trackEvent("cta_clicked", {
+      source: "hero-search-redirect",
+      category,
+      district,
+      search_term: heroSearchQuery,
+    });
+
+    router.push(`/arzt?search=${encodeURIComponent(heroSearchQuery)}`);
   }
 
   function openLeadModal(triggerSource: string, preselectedCategory?: string, preselectedDistrict?: string) {
@@ -389,7 +410,7 @@ export function LandingPage({
             </label>
 
             <button
-              onClick={() => openLeadModal("hero-search", category, district)}
+              onClick={handleHeroSearch}
               className="rounded-xl bg-sky-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-sky-500 active:scale-[0.99]"
             >
               Freie Termine suchen

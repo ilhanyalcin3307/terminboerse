@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Globe,
   MapPin,
@@ -18,9 +19,11 @@ import { getGoogleMapsUrl, type DoctorRecord } from "@/lib/doctors";
 
 type ArztDirectoryProps = {
   initialDoctors?: DoctorRecord[];
+  initialSearchQuery?: string;
 };
 
-export function ArztDirectory({ initialDoctors = [] }: ArztDirectoryProps) {
+export function ArztDirectory({ initialDoctors = [], initialSearchQuery = "" }: ArztDirectoryProps) {
+  const router = useRouter();
   const [doctors, setDoctors] = useState<DoctorRecord[]>(initialDoctors);
   const [isLoading, setIsLoading] = useState(initialDoctors.length === 0);
 
@@ -69,7 +72,7 @@ export function ArztDirectory({ initialDoctors = [] }: ArztDirectoryProps) {
 
   const [selectedSpecialty, setSelectedSpecialty] = useState("Alle Fachbereiche");
   const [selectedDistrict, setSelectedDistrict] = useState("All Wien");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
 
   const featuredSpecialties = useMemo(() => specialties.slice(1, 7), [specialties]);
 
@@ -218,7 +221,20 @@ export function ArztDirectory({ initialDoctors = [] }: ArztDirectoryProps) {
           ) : null}
 
           {!isLoading ? filteredDoctors.map((doctor) => (
-            <article key={doctor.id} className="rounded-[1.6rem] border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
+            <article
+              key={doctor.id}
+              onClick={() => {
+                trackEvent("cta_clicked", {
+                  source: "arzt-directory-card",
+                  action: "doctor_detail",
+                  doctor_id: doctor.id,
+                  category: doctor.specialty,
+                  district: doctor.district,
+                });
+                router.push(`/arzt/${encodeURIComponent(doctor.id)}`);
+              }}
+              className="cursor-pointer rounded-[1.6rem] border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
+            >
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-bold text-slate-900">{doctor.name}</h2>
@@ -250,7 +266,10 @@ export function ArztDirectory({ initialDoctors = [] }: ArztDirectoryProps) {
                 {doctor.phone ? (
                   <a
                     href={`tel:${doctor.phone.replace(/[^+\d]/g, "")}`}
-                    onClick={() => trackDoctorAction(doctor, "phone")}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      trackDoctorAction(doctor, "phone");
+                    }}
                     className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                   >
                     <PhoneCall className="h-4 w-4" />
@@ -262,7 +281,10 @@ export function ArztDirectory({ initialDoctors = [] }: ArztDirectoryProps) {
                     href={doctor.website}
                     target="_blank"
                     rel="noopener noreferrer"
-                    onClick={() => trackDoctorAction(doctor, "website")}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      trackDoctorAction(doctor, "website");
+                    }}
                     className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                   >
                     <Globe className="h-4 w-4" />
@@ -273,7 +295,10 @@ export function ArztDirectory({ initialDoctors = [] }: ArztDirectoryProps) {
                   href={getGoogleMapsUrl(doctor)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={() => trackDoctorAction(doctor, "route")}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    trackDoctorAction(doctor, "route");
+                  }}
                   className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                 >
                   <Route className="h-4 w-4" />
@@ -284,15 +309,16 @@ export function ArztDirectory({ initialDoctors = [] }: ArztDirectoryProps) {
               <div className="mt-4 grid gap-2 sm:grid-cols-2">
                 <Link
                   href={`/arzt/${encodeURIComponent(doctor.id)}`}
-                  onClick={() =>
+                  onClick={(event) => {
+                    event.stopPropagation();
                     trackEvent("cta_clicked", {
                       source: "arzt-directory",
                       action: "doctor_detail",
                       doctor_id: doctor.id,
                       category: doctor.specialty,
                       district: doctor.district,
-                    })
-                  }
+                    });
+                  }}
                   className="inline-flex items-center justify-center rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                 >
                   Profil ansehen
