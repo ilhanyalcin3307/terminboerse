@@ -46,6 +46,9 @@ export const metadata: Metadata = {
     description:
       "Finde kurzfristige Arzttermine in Wien. Suche nach Fachbereich und Bezirk, entdecke freie Optionen und frage direkt Termine an.",
   },
+  verification: {
+    google: "vrWQo-G7ko2w-_8-4LOGewb4h2e7890ZeETG8HaGYzw",
+  },
   robots: {
     index: true,
     follow: true,
