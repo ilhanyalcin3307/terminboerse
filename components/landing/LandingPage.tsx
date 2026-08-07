@@ -1,18 +1,15 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import {
   BellRing,
-  BriefcaseBusiness,
   CircleCheckBig,
   Clock3,
   HeartPulse,
   Mail,
   MapPin,
   ShieldCheck,
-  Sparkles,
   X,
 } from "lucide-react";
 import { DevAnalyticsPanel } from "@/components/analytics/DevAnalyticsPanel";
@@ -56,33 +53,6 @@ const fallbackCategories = [
   "Orthopädie",
 ];
 
-const sectorCards = [
-  {
-    title: "Arzt & Gesundheit",
-    href: "/arzt",
-    badge: "32 Storno-Termine heute",
-    icon: HeartPulse,
-    active: true,
-    category: "Dermatologie",
-  },
-  {
-    title: "Recht & Finanzen",
-    href: "/",
-    badge: "Demnächst",
-    icon: BriefcaseBusiness,
-    active: false,
-    category: "Recht",
-  },
-  {
-    title: "Beauty & Wellness",
-    href: "/",
-    badge: "Demnächst",
-    icon: Sparkles,
-    active: false,
-    category: "Beauty",
-  },
-];
-
 function isValidContact(contact: string) {
   const trimmed = contact.trim();
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -101,7 +71,6 @@ export function LandingPage({
 }: LandingPageProps) {
   const router = useRouter();
   const [leadModalOpen, setLeadModalOpen] = useState(false);
-  const [waitlistModalOpen, setWaitlistModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
@@ -150,11 +119,6 @@ export function LandingPage({
   const [formCategory, setFormCategory] = useState(initialCategory ?? availableCategories[0] ?? "Dermatologie");
   const [formDistrict, setFormDistrict] = useState("All Wien");
   const [formError, setFormError] = useState("");
-
-  const [waitlistCategory, setWaitlistCategory] = useState("");
-  const [waitlistContact, setWaitlistContact] = useState("");
-  const [waitlistError, setWaitlistError] = useState("");
-  const [waitlistSuccess, setWaitlistSuccess] = useState(false);
 
   const heroSummary = useMemo(() => {
     return `${district} · ${category}`;
@@ -216,25 +180,6 @@ export function LandingPage({
     });
   }
 
-  function openWaitlistModal(triggerSource: string, selectedCategory: string) {
-    setWaitlistModalOpen(true);
-    setWaitlistSuccess(false);
-    setWaitlistError("");
-    setWaitlistContact("");
-    setWaitlistCategory(selectedCategory);
-    trackEvent("cta_clicked", {
-      source: triggerSource,
-      category: selectedCategory,
-      district,
-    });
-    trackEvent("modal_opened", {
-      source: triggerSource,
-      modal: "waitlist",
-      category: selectedCategory,
-      district,
-    });
-  }
-
   async function handleLeadSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -282,38 +227,6 @@ export function LandingPage({
     } finally {
       setIsSubmitting(false);
     }
-  }
-
-  function handleWaitlistSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (!isValidContact(waitlistContact)) {
-      setWaitlistError("Bitte gib eine gültige E-Mail-Adresse oder WhatsApp-Nummer ein.");
-      return;
-    }
-
-    const entry = {
-      id: crypto.randomUUID(),
-      source: "inactive-category",
-      category: waitlistCategory,
-      district,
-      contact: waitlistContact.trim(),
-      createdAt: new Date().toISOString(),
-    };
-
-    prependLocalStorageItem("terminboerse_waitlist", entry);
-
-    trackEvent("lead_submitted", {
-      source: "inactive-category",
-      category: waitlistCategory,
-      district,
-      channel: waitlistContact.includes("@") ? "email" : "whatsapp",
-    });
-
-    console.log("Warteliste Lead erfasst:", entry);
-    setWaitlistSuccess(true);
-    setWaitlistError("");
-    setWaitlistContact("");
   }
 
   return (
@@ -412,56 +325,6 @@ export function LandingPage({
                 </button>
               </article>
             ))}
-          </div>
-        </section>
-
-        <section>
-          <h2 className="mb-4 text-2xl font-bold text-slate-900">Bereiche</h2>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {sectorCards.map((card) => {
-              const Icon = card.icon;
-              return (
-                <button
-                  key={card.title}
-                  onClick={() => {
-                    if (card.active) {
-                      openLeadModal("category", card.category, district);
-                      return;
-                    }
-                    openWaitlistModal("inactive-category", card.title);
-                  }}
-                  className={`group rounded-2xl border p-5 text-left transition ${
-                    card.active
-                      ? "border-sky-200 bg-white hover:-translate-y-0.5 hover:shadow-lg"
-                      : "border-slate-200 bg-slate-100/75"
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <Icon className={`h-6 w-6 ${card.active ? "text-sky-600" : "text-slate-500"}`} />
-                    <span
-                      className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                        card.active ? "bg-rose-100 text-rose-700" : "bg-slate-200 text-slate-600"
-                      }`}
-                    >
-                      {card.badge}
-                    </span>
-                  </div>
-                  <p className="mt-4 text-lg font-bold text-slate-900">{card.title}</p>
-                  <p className="mt-2 text-sm text-slate-600">
-                    {card.active ? "Jetzt passende Storno-Termine entdecken" : "Jetzt Warteliste aktivieren"}
-                  </p>
-                  {card.active ? (
-                    <Link
-                      href={card.href}
-                      className="mt-4 inline-block text-sm font-semibold text-sky-700 underline-offset-4 hover:underline"
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      Bereich ansehen
-                    </Link>
-                  ) : null}
-                </button>
-              );
-            })}
           </div>
         </section>
 
@@ -589,51 +452,6 @@ export function LandingPage({
                   className="mt-2 w-full rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   {isSubmitting ? "Wird aktiviert..." : "Benachrichtigung aktivieren"}
-                </button>
-              </form>
-            )}
-          </div>
-        </div>
-      ) : null}
-
-      {waitlistModalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4" role="dialog" aria-modal="true">
-          <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
-            <div className="mb-4 flex items-start justify-between gap-4">
-              <div>
-                <h3 className="text-xl font-bold text-slate-900">Warteliste beitreten</h3>
-                <p className="mt-1 text-sm text-slate-600">
-                  {waitlistCategory}: Wir informieren dich sofort, sobald dieser Bereich verfügbar ist.
-                </p>
-              </div>
-              <button
-                onClick={() => setWaitlistModalOpen(false)}
-                className="rounded-full border border-slate-200 p-1.5 text-slate-500 transition hover:bg-slate-100"
-                aria-label="Modal schließen"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            {waitlistSuccess ? (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">
-                <p className="font-semibold">Danke! Du stehst jetzt auf der Warteliste für {waitlistCategory}.</p>
-              </div>
-            ) : (
-              <form onSubmit={handleWaitlistSubmit} className="space-y-3">
-                <label className="block text-sm">
-                  <span className="mb-1 block text-slate-600">E-Mail oder WhatsApp-Nummer</span>
-                  <input
-                    required
-                    value={waitlistContact}
-                    onChange={(event) => setWaitlistContact(event.target.value)}
-                    className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none ring-sky-300 focus:ring"
-                    placeholder="name@email.at oder +43..."
-                  />
-                </label>
-                {waitlistError ? <p className="text-sm font-medium text-rose-700">{waitlistError}</p> : null}
-                <button className="w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-slate-700">
-                  Warteliste beitreten
                 </button>
               </form>
             )}
