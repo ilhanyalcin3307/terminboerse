@@ -10,6 +10,8 @@ import {
   ClipboardList,
   Clock3,
   Eye,
+  Plus,
+  Trash2,
   Save,
   UserRound,
 } from "lucide-react";
@@ -79,7 +81,12 @@ type LegacyProfileForm = Partial<Omit<ProfileForm, "expertise" | "languages" | "
 type LegacyAvailabilityForm = Record<string, unknown>;
 
 type RequestStatus = "Neu" | "In Bearbeitung" | "Erledigt";
-type DashboardTab = "profil" | "termine" | "anfragen";
+type DashboardTab = "profil" | "leistungen" | "termine" | "anfragen";
+
+type LeistungItem = {
+  id: string;
+  title: string;
+};
 
 type IncomingRequest = {
   id: string;
@@ -354,6 +361,9 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
   const [savedProfile, setSavedProfile] = useState(false);
   const [savedAvailability, setSavedAvailability] = useState(false);
   const [savedAppointments, setSavedAppointments] = useState(false);
+  const [leistungen, setLeistungen] = useState<LeistungItem[]>([]);
+  const [newLeistung, setNewLeistung] = useState("");
+  const [savedLeistungen, setSavedLeistungen] = useState(false);
 
   const selectedDoctor = useMemo(
     () => doctors.find((doctor) => doctor.id === selectedDoctorId) ?? doctors[0],
@@ -375,17 +385,22 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
     const profileStorageKey = `terminboerse_arzt_profile_${selectedDoctor.id}`;
     const availabilityStorageKey = `terminboerse_arzt_availability_${selectedDoctor.id}`;
     const appointmentStorageKey = `terminboerse_arzt_appointments_${selectedDoctor.id}`;
+    const leistungenStorageKey = `terminboerse_arzt_services_${selectedDoctor.id}`;
 
     const storedProfile = readJsonFromStorage<LegacyProfileForm>(profileStorageKey);
     const storedAvailability = readJsonFromStorage<LegacyAvailabilityForm>(availabilityStorageKey);
     const storedAppointmentSettings = readJsonFromStorage<AppointmentForm>(appointmentStorageKey);
+    const storedLeistungen = readJsonFromStorage<LeistungItem[]>(leistungenStorageKey);
 
     setProfileForm(normalizeStoredProfile(storedProfile, selectedDoctor));
     setAvailabilityForm(normalizeStoredAvailability(storedAvailability));
     setAppointmentForm(storedAppointmentSettings ?? getDefaultAppointmentSettings());
+    setLeistungen(Array.isArray(storedLeistungen) ? storedLeistungen : []);
+    setNewLeistung("");
     setSavedProfile(false);
     setSavedAvailability(false);
     setSavedAppointments(false);
+    setSavedLeistungen(false);
   }, [selectedDoctor]);
 
   if (!selectedDoctor || !profileForm) {
@@ -424,6 +439,35 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
     localStorage.setItem(appointmentStorageKey, JSON.stringify(appointmentForm));
     setSavedAppointments(true);
     window.setTimeout(() => setSavedAppointments(false), 1800);
+  }
+
+  function addLeistung() {
+    const title = newLeistung.trim();
+    if (!title) {
+      return;
+    }
+    setLeistungen((prev) => [...prev, { id: crypto.randomUUID(), title }]);
+    setNewLeistung("");
+  }
+
+  function updateLeistung(id: string, title: string) {
+    setLeistungen((prev) => prev.map((item) => (item.id === id ? { ...item, title } : item)));
+  }
+
+  function removeLeistung(id: string) {
+    setLeistungen((prev) => prev.filter((item) => item.id !== id));
+  }
+
+  function saveLeistungen() {
+    const leistungenStorageKey = `terminboerse_arzt_services_${selectedDoctor.id}`;
+    const cleaned = leistungen
+      .map((item) => ({ ...item, title: item.title.trim() }))
+      .filter((item) => item.title.length > 0);
+
+    localStorage.setItem(leistungenStorageKey, JSON.stringify(cleaned));
+    setLeistungen(cleaned);
+    setSavedLeistungen(true);
+    window.setTimeout(() => setSavedLeistungen(false), 1800);
   }
 
   const expertiseList = profileForm.expertise;
@@ -478,6 +522,17 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
             }`}
           >
             Profil
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("leistungen")}
+            className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+              activeTab === "leistungen"
+                ? "bg-violet-700 text-white"
+                : "bg-violet-100 text-violet-800 hover:bg-violet-200"
+            }`}
+          >
+            Leistungen
           </button>
           <button
             type="button"
@@ -1087,6 +1142,100 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
               </div>
             </article>
           </div>
+        </section>
+      ) : null}
+
+      {activeTab === "leistungen" ? (
+        <section className="mt-6 grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+          <article className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-bold text-slate-900">Leistungen verwalten</h2>
+            <p className="mt-2 text-sm text-slate-600">
+              Erfasse alle angebotenen Leistungen, z. B. Botox, Zahnkronen, Vorsorge oder Spezialbehandlungen.
+            </p>
+
+            <div className="mt-4 flex gap-2">
+              <input
+                value={newLeistung}
+                onChange={(event) => setNewLeistung(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    addLeistung();
+                  }
+                }}
+                placeholder="Neue Leistung eingeben"
+                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-sky-300 focus:ring"
+              />
+              <button
+                type="button"
+                onClick={addLeistung}
+                className="inline-flex items-center gap-1 rounded-xl bg-violet-700 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-600"
+              >
+                <Plus className="h-4 w-4" />
+                Hinzufügen
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-2">
+              {leistungen.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-sm text-slate-600">
+                  Noch keine Leistungen angelegt.
+                </p>
+              ) : (
+                leistungen.map((item) => (
+                  <div key={item.id} className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2">
+                    <input
+                      value={item.title}
+                      onChange={(event) => updateLeistung(item.id, event.target.value)}
+                      className="w-full text-sm outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeLeistung(item.id)}
+                      className="rounded-lg p-1.5 text-rose-600 transition hover:bg-rose-50"
+                      aria-label="Leistung löschen"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="mt-4 flex items-center gap-3">
+              <button
+                onClick={saveLeistungen}
+                className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
+              >
+                <Save className="h-4 w-4" />
+                Leistungen speichern
+              </button>
+              {savedLeistungen ? (
+                <p className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-700">
+                  <CheckCircle2 className="h-4 w-4" />
+                  Gespeichert
+                </p>
+              ) : null}
+            </div>
+          </article>
+
+          <article className="rounded-[2rem] border border-violet-200 bg-violet-50 p-6 shadow-sm">
+            <h2 className="text-lg font-bold text-slate-900">Leistungs-Vorschau</h2>
+            <p className="mt-2 text-sm text-slate-700">So werden die Leistungen später auf dem Profil dargestellt.</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {leistungen.length > 0 ? (
+                leistungen
+                  .filter((item) => item.title.trim().length > 0)
+                  .map((item) => (
+                    <span key={item.id} className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-violet-800">
+                      {item.title}
+                    </span>
+                  ))
+              ) : (
+                <span className="text-sm text-slate-600">Noch keine Leistungen vorhanden.</span>
+              )}
+            </div>
+          </article>
         </section>
       ) : null}
 
