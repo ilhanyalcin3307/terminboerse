@@ -86,7 +86,20 @@ type DashboardTab = "profil" | "leistungen" | "termine" | "anfragen";
 type LeistungItem = {
   id: string;
   title: string;
+  description: string;
+  durationMinutes: string;
+  priceInfo: string;
 };
+
+type LegacyLeistungItem =
+  | string
+  | {
+      id?: string;
+      title?: string;
+      description?: string;
+      durationMinutes?: string | number;
+      priceInfo?: string;
+    };
 
 type IncomingRequest = {
   id: string;
@@ -338,6 +351,48 @@ function toggleSelection(current: string[], value: string) {
   return [...current, value];
 }
 
+function normalizeStoredLeistungen(rawLeistungen: LegacyLeistungItem[] | null): LeistungItem[] {
+  if (!Array.isArray(rawLeistungen)) {
+    return [];
+  }
+
+  return rawLeistungen
+    .map((entry) => {
+      if (typeof entry === "string") {
+        const title = entry.trim();
+        if (!title) {
+          return null;
+        }
+        return {
+          id: crypto.randomUUID(),
+          title,
+          description: "",
+          durationMinutes: "",
+          priceInfo: "",
+        } satisfies LeistungItem;
+      }
+
+      const title = typeof entry.title === "string" ? entry.title.trim() : "";
+      if (!title) {
+        return null;
+      }
+
+      return {
+        id: typeof entry.id === "string" && entry.id.length > 0 ? entry.id : crypto.randomUUID(),
+        title,
+        description: typeof entry.description === "string" ? entry.description : "",
+        durationMinutes:
+          typeof entry.durationMinutes === "number"
+            ? String(entry.durationMinutes)
+            : typeof entry.durationMinutes === "string"
+              ? entry.durationMinutes
+              : "",
+        priceInfo: typeof entry.priceInfo === "string" ? entry.priceInfo : "",
+      } satisfies LeistungItem;
+    })
+    .filter((item): item is LeistungItem => item !== null);
+}
+
 function formatDateTime(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -362,7 +417,7 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
   const [savedAvailability, setSavedAvailability] = useState(false);
   const [savedAppointments, setSavedAppointments] = useState(false);
   const [leistungen, setLeistungen] = useState<LeistungItem[]>([]);
-  const [newLeistung, setNewLeistung] = useState("");
+  const [newLeistungTitle, setNewLeistungTitle] = useState("");
   const [savedLeistungen, setSavedLeistungen] = useState(false);
 
   const selectedDoctor = useMemo(
@@ -390,13 +445,13 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
     const storedProfile = readJsonFromStorage<LegacyProfileForm>(profileStorageKey);
     const storedAvailability = readJsonFromStorage<LegacyAvailabilityForm>(availabilityStorageKey);
     const storedAppointmentSettings = readJsonFromStorage<AppointmentForm>(appointmentStorageKey);
-    const storedLeistungen = readJsonFromStorage<LeistungItem[]>(leistungenStorageKey);
+    const storedLeistungen = readJsonFromStorage<LegacyLeistungItem[]>(leistungenStorageKey);
 
     setProfileForm(normalizeStoredProfile(storedProfile, selectedDoctor));
     setAvailabilityForm(normalizeStoredAvailability(storedAvailability));
     setAppointmentForm(storedAppointmentSettings ?? getDefaultAppointmentSettings());
-    setLeistungen(Array.isArray(storedLeistungen) ? storedLeistungen : []);
-    setNewLeistung("");
+    setLeistungen(normalizeStoredLeistungen(storedLeistungen));
+    setNewLeistungTitle("");
     setSavedProfile(false);
     setSavedAvailability(false);
     setSavedAppointments(false);
@@ -442,16 +497,25 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
   }
 
   function addLeistung() {
-    const title = newLeistung.trim();
+    const title = newLeistungTitle.trim();
     if (!title) {
       return;
     }
-    setLeistungen((prev) => [...prev, { id: crypto.randomUUID(), title }]);
-    setNewLeistung("");
+    setLeistungen((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        title,
+        description: "",
+        durationMinutes: "",
+        priceInfo: "",
+      },
+    ]);
+    setNewLeistungTitle("");
   }
 
-  function updateLeistung(id: string, title: string) {
-    setLeistungen((prev) => prev.map((item) => (item.id === id ? { ...item, title } : item)));
+  function updateLeistung(id: string, patch: Partial<LeistungItem>) {
+    setLeistungen((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)));
   }
 
   function removeLeistung(id: string) {
@@ -461,7 +525,13 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
   function saveLeistungen() {
     const leistungenStorageKey = `terminboerse_arzt_services_${selectedDoctor.id}`;
     const cleaned = leistungen
-      .map((item) => ({ ...item, title: item.title.trim() }))
+      .map((item) => ({
+        ...item,
+        title: item.title.trim(),
+        description: item.description.trim(),
+        durationMinutes: item.durationMinutes.trim(),
+        priceInfo: item.priceInfo.trim(),
+      }))
       .filter((item) => item.title.length > 0);
 
     localStorage.setItem(leistungenStorageKey, JSON.stringify(cleaned));
@@ -1155,15 +1225,15 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
 
             <div className="mt-4 flex gap-2">
               <input
-                value={newLeistung}
-                onChange={(event) => setNewLeistung(event.target.value)}
+                value={newLeistungTitle}
+                onChange={(event) => setNewLeistungTitle(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     event.preventDefault();
                     addLeistung();
                   }
                 }}
-                placeholder="Neue Leistung eingeben"
+                placeholder="Leistungstitel eingeben (z. B. Botox)"
                 className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-sky-300 focus:ring"
               />
               <button
@@ -1183,21 +1253,57 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
                 </p>
               ) : (
                 leistungen.map((item) => (
-                  <div key={item.id} className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2">
-                    <input
-                      value={item.title}
-                      onChange={(event) => updateLeistung(item.id, event.target.value)}
-                      className="w-full text-sm outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeLeistung(item.id)}
-                      className="rounded-lg p-1.5 text-rose-600 transition hover:bg-rose-50"
-                      aria-label="Leistung löschen"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
+                  <article key={item.id} className="rounded-xl border border-slate-200 p-3">
+                    <div className="flex items-start gap-2">
+                      <input
+                        value={item.title}
+                        onChange={(event) => updateLeistung(item.id, { title: event.target.value })}
+                        placeholder="Leistungstitel"
+                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none ring-sky-300 focus:ring"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeLeistung(item.id)}
+                        className="rounded-lg p-2 text-rose-600 transition hover:bg-rose-50"
+                        aria-label="Leistung löschen"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+
+                    <label className="mt-2 block text-xs text-slate-600">
+                      Beschreibung
+                      <textarea
+                        value={item.description}
+                        onChange={(event) => updateLeistung(item.id, { description: event.target.value })}
+                        placeholder="Details zur Leistung, Ablauf, Zielgruppe, Hinweise"
+                        className="mt-1 min-h-24 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none ring-sky-300 focus:ring"
+                      />
+                    </label>
+
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      <label className="block text-xs text-slate-600">
+                        Dauer (Minuten, optional)
+                        <input
+                          type="number"
+                          min={0}
+                          step={5}
+                          value={item.durationMinutes}
+                          onChange={(event) => updateLeistung(item.id, { durationMinutes: event.target.value })}
+                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none ring-sky-300 focus:ring"
+                        />
+                      </label>
+                      <label className="block text-xs text-slate-600">
+                        Preisinfo (optional)
+                        <input
+                          value={item.priceInfo}
+                          onChange={(event) => updateLeistung(item.id, { priceInfo: event.target.value })}
+                          placeholder="z. B. ab 180 EUR"
+                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none ring-sky-300 focus:ring"
+                        />
+                      </label>
+                    </div>
+                  </article>
                 ))
               )}
             </div>
@@ -1222,14 +1328,24 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
           <article className="rounded-[2rem] border border-violet-200 bg-violet-50 p-6 shadow-sm">
             <h2 className="text-lg font-bold text-slate-900">Leistungs-Vorschau</h2>
             <p className="mt-2 text-sm text-slate-700">So werden die Leistungen später auf dem Profil dargestellt.</p>
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-4 space-y-3">
               {leistungen.length > 0 ? (
                 leistungen
                   .filter((item) => item.title.trim().length > 0)
                   .map((item) => (
-                    <span key={item.id} className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-violet-800">
-                      {item.title}
-                    </span>
+                    <article key={item.id} className="rounded-xl border border-violet-200 bg-white p-3 text-sm text-slate-700">
+                      <span className="inline-flex rounded-full bg-violet-100 px-2 py-1 text-xs font-semibold text-violet-800">
+                        {item.title}
+                      </span>
+                      {item.description ? <p className="mt-2">{item.description}</p> : null}
+                      {item.durationMinutes || item.priceInfo ? (
+                        <p className="mt-2 text-xs text-slate-600">
+                          {item.durationMinutes ? `Dauer: ${item.durationMinutes} Min` : ""}
+                          {item.durationMinutes && item.priceInfo ? " • " : ""}
+                          {item.priceInfo ? `Preis: ${item.priceInfo}` : ""}
+                        </p>
+                      ) : null}
+                    </article>
                   ))
               ) : (
                 <span className="text-sm text-slate-600">Noch keine Leistungen vorhanden.</span>
