@@ -6,6 +6,7 @@ import {
   CalendarDays,
   CalendarPlus2,
   CheckCircle2,
+  ChevronDown,
   ClipboardList,
   Clock3,
   Eye,
@@ -39,13 +40,24 @@ type ProfileForm = {
   email: string;
   website: string;
   about: string;
-  expertise: string;
+  expertise: string[];
   languages: string[];
   insuranceModels: string[];
   emergencyNote: string;
+  facebook: string;
+  instagram: string;
+  tiktok: string;
 };
 
-type AvailabilityForm = Record<string, string>;
+type WeekdayKey = "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday";
+
+type DailyHours = {
+  isClosed: boolean;
+  opensAt: string;
+  closesAt: string;
+};
+
+type AvailabilityForm = Record<WeekdayKey, DailyHours>;
 
 type AppointmentForm = {
   slotDurationMinutes: number;
@@ -58,10 +70,13 @@ type AppointmentForm = {
   calendarConnectionStatus: "Nicht verbunden" | "Verbunden";
 };
 
-type LegacyProfileForm = Omit<ProfileForm, "languages" | "insuranceModels"> & {
+type LegacyProfileForm = Partial<Omit<ProfileForm, "expertise" | "languages" | "insuranceModels">> & {
+  expertise?: string[] | string;
   languages?: string[] | string;
   insuranceModels?: string[] | string;
 };
+
+type LegacyAvailabilityForm = Record<string, unknown>;
 
 type RequestStatus = "Neu" | "In Bearbeitung" | "Erledigt";
 type DashboardTab = "profil" | "termine" | "anfragen";
@@ -76,7 +91,7 @@ type IncomingRequest = {
   status: RequestStatus;
 };
 
-const WEEKDAY_CONFIG: Array<{ key: keyof AvailabilityForm; label: string }> = [
+const WEEKDAY_CONFIG: Array<{ key: WeekdayKey; label: string }> = [
   { key: "monday", label: "Montag" },
   { key: "tuesday", label: "Dienstag" },
   { key: "wednesday", label: "Mittwoch" },
@@ -101,17 +116,23 @@ const LANGUAGE_OPTIONS = [
 
 const INSURANCE_OPTIONS = ["OEGK", "Wahlarzt", "Privat", "SVS", "BVAEB", "KFA", "Selbstzahler"];
 
-const WORKING_HOUR_OPTIONS = [
-  "07:00 - 12:00",
-  "08:00 - 12:00",
-  "08:00 - 16:00",
-  "08:30 - 13:00",
-  "08:30 - 16:00",
-  "09:00 - 13:00",
-  "09:00 - 17:00",
-  "10:00 - 18:00",
-  "Geschlossen",
-  "Nach Vereinbarung",
+const EXPERTISE_OPTIONS = [
+  "Allgemeinmedizin",
+  "Vorsorgeuntersuchung",
+  "Akutsprechstunde",
+  "Chronische Erkrankungen",
+  "Impfberatung",
+  "Dermatologie",
+  "Orthopädie",
+  "Kardiologie",
+  "HNO",
+  "Gynäkologie",
+  "Kinderheilkunde",
+  "Urologie",
+  "Psychiatrie/Psychotherapie",
+  "Innere Medizin",
+  "Reisemedizin",
+  "Labordiagnostik",
 ];
 
 function getDefaultProfile(doctor: ArztDashboardDoctor): ProfileForm {
@@ -125,22 +146,25 @@ function getDefaultProfile(doctor: ArztDashboardDoctor): ProfileForm {
     website: doctor.website ?? "",
     about:
       "Ich begleite Patientinnen und Patienten mit klarem Ablauf, transparenter Kommunikation und individueller Beratung.",
-    expertise: "Akutsprechstunde, Vorsorge, Verlaufskontrollen",
+    expertise: ["Akutsprechstunde", "Vorsorgeuntersuchung", "Verlaufskontrollen"],
     languages: ["Deutsch", "Englisch"],
     insuranceModels: ["OEGK", "Privat"],
     emergencyNote: "Bei akuten Beschwerden bitte vorab telefonisch Kontakt aufnehmen.",
+    facebook: "",
+    instagram: "",
+    tiktok: "",
   };
 }
 
 function getDefaultAvailability(): AvailabilityForm {
   return {
-    monday: "08:30 - 16:00",
-    tuesday: "08:30 - 16:00",
-    wednesday: "08:30 - 16:00",
-    thursday: "08:30 - 16:00",
-    friday: "08:30 - 13:00",
-    saturday: "Geschlossen",
-    sunday: "Geschlossen",
+    monday: { isClosed: false, opensAt: "08:30", closesAt: "16:00" },
+    tuesday: { isClosed: false, opensAt: "08:30", closesAt: "16:00" },
+    wednesday: { isClosed: false, opensAt: "08:30", closesAt: "16:00" },
+    thursday: { isClosed: false, opensAt: "08:30", closesAt: "16:00" },
+    friday: { isClosed: false, opensAt: "08:30", closesAt: "13:00" },
+    saturday: { isClosed: true, opensAt: "09:00", closesAt: "12:00" },
+    sunday: { isClosed: true, opensAt: "09:00", closesAt: "12:00" },
   };
 }
 
@@ -214,6 +238,15 @@ function normalizeStoredProfile(rawProfile: LegacyProfileForm | null, doctor: Ar
     return fallback;
   }
 
+  const expertise = Array.isArray(rawProfile.expertise)
+    ? rawProfile.expertise
+    : typeof rawProfile.expertise === "string"
+      ? rawProfile.expertise
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : fallback.expertise;
+
   const languages = Array.isArray(rawProfile.languages)
     ? rawProfile.languages
     : typeof rawProfile.languages === "string"
@@ -235,9 +268,60 @@ function normalizeStoredProfile(rawProfile: LegacyProfileForm | null, doctor: Ar
   return {
     ...fallback,
     ...rawProfile,
+    expertise,
     languages,
     insuranceModels,
   };
+}
+
+function normalizeTime(value: string, fallback: string) {
+  if (/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) {
+    return value;
+  }
+  return fallback;
+}
+
+function normalizeStoredAvailability(rawAvailability: LegacyAvailabilityForm | null): AvailabilityForm {
+  const fallback = getDefaultAvailability();
+
+  if (!rawAvailability) {
+    return fallback;
+  }
+
+  const next = { ...fallback };
+
+  for (const { key } of WEEKDAY_CONFIG) {
+    const rawValue = rawAvailability[key];
+    const dayFallback = fallback[key];
+
+    if (typeof rawValue === "string") {
+      if (rawValue.toLowerCase().includes("geschlossen")) {
+        next[key] = { ...dayFallback, isClosed: true };
+        continue;
+      }
+
+      const match = rawValue.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
+      if (match) {
+        next[key] = {
+          isClosed: false,
+          opensAt: normalizeTime(match[1].padStart(5, "0"), dayFallback.opensAt),
+          closesAt: normalizeTime(match[2].padStart(5, "0"), dayFallback.closesAt),
+        };
+      }
+      continue;
+    }
+
+    if (rawValue && typeof rawValue === "object") {
+      const day = rawValue as Partial<DailyHours>;
+      next[key] = {
+        isClosed: Boolean(day.isClosed),
+        opensAt: normalizeTime(typeof day.opensAt === "string" ? day.opensAt : dayFallback.opensAt, dayFallback.opensAt),
+        closesAt: normalizeTime(typeof day.closesAt === "string" ? day.closesAt : dayFallback.closesAt, dayFallback.closesAt),
+      };
+    }
+  }
+
+  return next;
 }
 
 function toggleSelection(current: string[], value: string) {
@@ -293,11 +377,11 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
     const appointmentStorageKey = `terminboerse_arzt_appointments_${selectedDoctor.id}`;
 
     const storedProfile = readJsonFromStorage<LegacyProfileForm>(profileStorageKey);
-    const storedAvailability = readJsonFromStorage<AvailabilityForm>(availabilityStorageKey);
+    const storedAvailability = readJsonFromStorage<LegacyAvailabilityForm>(availabilityStorageKey);
     const storedAppointmentSettings = readJsonFromStorage<AppointmentForm>(appointmentStorageKey);
 
     setProfileForm(normalizeStoredProfile(storedProfile, selectedDoctor));
-    setAvailabilityForm(storedAvailability ?? getDefaultAvailability());
+    setAvailabilityForm(normalizeStoredAvailability(storedAvailability));
     setAppointmentForm(storedAppointmentSettings ?? getDefaultAppointmentSettings());
     setSavedProfile(false);
     setSavedAvailability(false);
@@ -342,10 +426,7 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
     window.setTimeout(() => setSavedAppointments(false), 1800);
   }
 
-  const expertiseList = profileForm.expertise
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
+  const expertiseList = profileForm.expertise;
   const appointmentTypeList = appointmentForm.appointmentTypes
     .split(",")
     .map((item) => item.trim())
@@ -480,9 +561,49 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
                   <span className="mb-1 block text-slate-600">Spezialisierungen (Komma-getrennt)</span>
                   <input
                     value={profileForm.expertise}
-                    onChange={(event) => setProfileForm((prev) => (prev ? { ...prev, expertise: event.target.value } : prev))}
-                    className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none ring-sky-300 focus:ring"
+                    onChange={() => undefined}
+                    className="hidden"
                   />
+                  <details className="rounded-xl border border-slate-300 bg-white">
+                    <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 text-sm text-slate-700">
+                      <span>Spezialisierungen auswählen</span>
+                      <ChevronDown className="h-4 w-4" />
+                    </summary>
+                    <div className="border-t border-slate-200 p-3">
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {EXPERTISE_OPTIONS.map((option) => (
+                          <label key={option} className="inline-flex items-center gap-2 text-sm text-slate-700">
+                            <input
+                              type="checkbox"
+                              checked={profileForm.expertise.includes(option)}
+                              onChange={() =>
+                                setProfileForm((prev) =>
+                                  prev
+                                    ? {
+                                        ...prev,
+                                        expertise: toggleSelection(prev.expertise, option),
+                                      }
+                                    : prev,
+                                )
+                              }
+                            />
+                            {option}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </details>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {profileForm.expertise.length > 0 ? (
+                      profileForm.expertise.map((item) => (
+                        <span key={item} className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
+                          {item}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-xs text-slate-500">Keine Spezialisierung gewählt</span>
+                    )}
+                  </div>
                 </label>
 
                 <div className="block text-sm sm:col-span-2">
@@ -584,6 +705,42 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
                     className="min-h-20 w-full rounded-xl border border-slate-300 px-3 py-2 outline-none ring-sky-300 focus:ring"
                   />
                 </label>
+
+                <label className="block text-sm">
+                  <span className="mb-1 block text-slate-600">Facebook</span>
+                  <input
+                    value={profileForm.facebook}
+                    onChange={(event) =>
+                      setProfileForm((prev) => (prev ? { ...prev, facebook: event.target.value } : prev))
+                    }
+                    placeholder="https://facebook.com/...."
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none ring-sky-300 focus:ring"
+                  />
+                </label>
+
+                <label className="block text-sm">
+                  <span className="mb-1 block text-slate-600">Instagram</span>
+                  <input
+                    value={profileForm.instagram}
+                    onChange={(event) =>
+                      setProfileForm((prev) => (prev ? { ...prev, instagram: event.target.value } : prev))
+                    }
+                    placeholder="https://instagram.com/...."
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none ring-sky-300 focus:ring"
+                  />
+                </label>
+
+                <label className="block text-sm sm:col-span-2">
+                  <span className="mb-1 block text-slate-600">TikTok</span>
+                  <input
+                    value={profileForm.tiktok}
+                    onChange={(event) =>
+                      setProfileForm((prev) => (prev ? { ...prev, tiktok: event.target.value } : prev))
+                    }
+                    placeholder="https://tiktok.com/@...."
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none ring-sky-300 focus:ring"
+                  />
+                </label>
               </div>
 
               <div className="mt-4 flex items-center gap-3">
@@ -611,25 +768,70 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
                 </h2>
                 <div className="mt-4 space-y-2">
                   {WEEKDAY_CONFIG.map((item) => (
-                    <label key={item.key} className="flex items-center gap-3 text-sm">
-                      <span className="w-28 shrink-0 font-semibold text-slate-700">{item.label}</span>
-                      <select
-                        value={availabilityForm[item.key] ?? ""}
-                        onChange={(event) =>
-                          setAvailabilityForm((prev) => ({
-                            ...prev,
-                            [item.key]: event.target.value,
-                          }))
-                        }
-                        className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none ring-sky-300 focus:ring"
-                      >
-                        {WORKING_HOUR_OPTIONS.map((option) => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                    <div key={item.key} className="rounded-xl border border-slate-200 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold text-slate-700">{item.label}</span>
+                        <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600">
+                          <input
+                            type="checkbox"
+                            checked={availabilityForm[item.key].isClosed}
+                            onChange={(event) =>
+                              setAvailabilityForm((prev) => ({
+                                ...prev,
+                                [item.key]: {
+                                  ...prev[item.key],
+                                  isClosed: event.target.checked,
+                                },
+                              }))
+                            }
+                          />
+                          Geschlossen
+                        </label>
+                      </div>
+
+                      {!availabilityForm[item.key].isClosed ? (
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          <label className="block text-xs text-slate-600">
+                            Öffnet
+                            <input
+                              type="time"
+                              step={300}
+                              value={availabilityForm[item.key].opensAt}
+                              onChange={(event) =>
+                                setAvailabilityForm((prev) => ({
+                                  ...prev,
+                                  [item.key]: {
+                                    ...prev[item.key],
+                                    opensAt: normalizeTime(event.target.value, prev[item.key].opensAt),
+                                  },
+                                }))
+                              }
+                              className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-sky-300 focus:ring"
+                            />
+                          </label>
+                          <label className="block text-xs text-slate-600">
+                            Schließt
+                            <input
+                              type="time"
+                              step={300}
+                              value={availabilityForm[item.key].closesAt}
+                              onChange={(event) =>
+                                setAvailabilityForm((prev) => ({
+                                  ...prev,
+                                  [item.key]: {
+                                    ...prev[item.key],
+                                    closesAt: normalizeTime(event.target.value, prev[item.key].closesAt),
+                                  },
+                                }))
+                              }
+                              className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-sky-300 focus:ring"
+                            />
+                          </label>
+                        </div>
+                      ) : (
+                        <p className="mt-2 text-xs text-slate-500">An diesem Tag ist die Praxis geschlossen.</p>
+                      )}
+                    </div>
                   ))}
                 </div>
 
@@ -692,6 +894,20 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
                       <span className="text-xs text-slate-500">Nicht angegeben</span>
                     )}
                   </div>
+
+                  <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Sprechzeiten</p>
+                  <div className="mt-2 space-y-1">
+                    {WEEKDAY_CONFIG.map((day) => (
+                      <p key={day.key} className="text-xs text-slate-600">
+                        {day.label}: {availabilityForm[day.key].isClosed ? "Geschlossen" : `${availabilityForm[day.key].opensAt} - ${availabilityForm[day.key].closesAt}`}
+                      </p>
+                    ))}
+                  </div>
+
+                  <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Social Media</p>
+                  <p className="mt-1 text-xs text-slate-600">Facebook: {profileForm.facebook || "Nicht angegeben"}</p>
+                  <p className="mt-1 text-xs text-slate-600">Instagram: {profileForm.instagram || "Nicht angegeben"}</p>
+                  <p className="mt-1 text-xs text-slate-600">TikTok: {profileForm.tiktok || "Nicht angegeben"}</p>
                 </div>
               </article>
             </div>
