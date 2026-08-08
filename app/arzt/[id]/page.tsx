@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { CalendarClock, Globe, Mail, MapPin, PhoneCall, Route, ShieldCheck, Stethoscope } from "lucide-react";
 import doctorsJson from "@/data/doctors.json";
 import { AppointmentRequestModal } from "@/components/arzt/AppointmentRequestModal";
+import { DoctorCommunityPanel } from "@/components/arzt/DoctorCommunityPanel";
 import {
   findDoctorBySeoSlug,
   getDoctorSeoSlug,
@@ -215,6 +216,8 @@ export default async function ArztDetailPage({ params, searchParams }: ArztDetai
               </p>
             </div>
           </section>
+
+          <DoctorCommunityPanel doctorId={doctor.id} doctorName={doctor.name} />
         </aside>
       </section>
     </main>

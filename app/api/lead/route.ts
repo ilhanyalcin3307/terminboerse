@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import doctorsJson from "@/data/doctors.json";
-import { findDoctorById, normalizeDoctorsData } from "@/lib/doctors";
+import { findDoctorById, getDoctorSeoSlug, normalizeDoctorsData } from "@/lib/doctors";
 
 type LeadBody = {
   doctorId?: string;
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.terminboerse.at";
     const fallbackEmail = process.env.LEAD_FALLBACK_EMAIL ?? "kontakt@terminboerse.at";
     const recipient = doctor.email ?? fallbackEmail;
-    const claimUrl = `${siteUrl}/arzt/${encodeURIComponent(doctor.id)}?claim=true`;
+    const claimUrl = `${siteUrl}/arzt/${encodeURIComponent(getDoctorSeoSlug(doctor))}?claim=true`;
     const fromEmail = process.env.RESEND_FROM_EMAIL ?? "Terminbörse <onboarding@resend.dev>";
 
     const subject = `Neue Termin-Anfrage für ${doctor.name} über Terminbörse.at`;
