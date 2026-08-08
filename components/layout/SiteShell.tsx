@@ -81,11 +81,11 @@ export function SiteShell({ children }: SiteShellProps) {
 
           <div className="flex items-center gap-2 sm:gap-3">
             <Link
-              href="/arztbereich"
+              href="/artztbereich"
               onClick={() =>
                 trackEvent("cta_clicked", {
-                  source: "navbar-arztbereich",
-                  action: "arztbereich_open",
+                  source: "navbar-artztbereich",
+                  action: "artztbereich_open",
                   category: "provider",
                   district: "all",
                 })
