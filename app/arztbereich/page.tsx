@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   },
 };
 
-export default function ArtztbereichPage() {
+export default function ArztbereichPage() {
   const doctors = normalizeDoctorsData(doctorsJson).map((doctor) => ({
     id: doctor.id,
     name: doctor.name,

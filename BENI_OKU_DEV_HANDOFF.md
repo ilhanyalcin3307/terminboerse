@@ -116,12 +116,12 @@ Not:
    - Not: View artisi su an process-memory tabanli (MVP), kalici DB/KV baglantisi sonraki adim
 13. Lead claim link SEO slug ile uyumlu hale getirildi
    - app/api/lead/route.ts icindeki claim URL yeni slug formatina guncellendi
-14. Artztbereich MVP route + panel eklendi
-   - Route: app/artztbereich/page.tsx
+14. Arztbereich MVP route + panel eklendi
+   - Route: app/arztbereich/page.tsx
    - UI: components/arztbereich/ArztDashboard.tsx
-15. Header'daki Artztbereich girisi gecici olarak inaktif yapildi
+15. Header'daki Arztbereich girisi gecici olarak inaktif yapildi
    - Dosya: components/layout/SiteShell.tsx
-16. Artztbereich paneli sekmeli yapıya tasindi (Phase 1 baslandi)
+16. Arztbereich paneli sekmeli yapıya tasindi (Phase 1 baslandi)
    - Sekmeler: Profil / Randevu / Anfragen
    - Profil: Hakkinda, uzmanliklar, diller, sigorta modelleri, acil not + temel iletisim
    - Randevu: slot suresi, buffer, iptal siniri, yeni hasta kabul, online randevu, randevu tipleri
@@ -136,7 +136,7 @@ Not:
 3. (Opsiyonel) Domain Property icin DNS TXT kaydi eklemek
    - Kayit: google-site-verification=vrWQo-G7ko2w-_8-4LOGewb4h2e7890ZeETG8HaGYzw
    - Not: Bu adim sadece Domain Property kullanilacaksa gerekli
-4. Artztbereich roadmap (oncelikli)
+4. Arztbereich roadmap (oncelikli)
    - Phase 1 (tamamlanan): Sekmeli temel panel + localStorage tabanli kayitlar
    - Phase 2 (siradaki): Login baglantisi + doktor bazli yetkilendirme + kayitlari API/DB'ye tasima
    - Phase 3: Randevu akisi backend + durum yonetimi + basit takvim gorunumu
@@ -153,7 +153,7 @@ Not:
 - Sitemap canli ve Search Console'a gonderime hazir durumda.
 - Doktor detay URL'leri SEO slug standardina tasindi ve canli.
 - Search Console icin URL-Prefix verification teknik olarak hazir; Domain Property icin DNS TXT gerekir.
-- Sonraki ana odak Artztbereich Phase 2 (login + persistent storage) ve sonrasinda Google Calendar hazirligi.
+- Sonraki ana odak Arztbereich Phase 2 (login + persistent storage) ve sonrasinda Google Calendar hazirligi.
 
 ## 11) Mola Sonrasi Hizli Baslangic Checklist
 1. git pull
@@ -180,9 +180,9 @@ Not:
 - Community write aksiyonlari login sonrasi aktive edilecek sekilde pasif birakildi
 
 ## 15) Son Session Delta (2026-08-08)
-- Commit: 8807d12 -> Artztbereich MVP route + panel eklendi
+- Commit: 8807d12 -> Arztbereich MVP route + panel eklendi
 - Commit: 8bdefe4 -> /arztbereich rotasi /artztbereich olarak degisti
-- Commit: 14cac9b -> Header Artztbereich butonu gecici olarak inaktif yapildi
+- Commit: 14cac9b -> Header Arztbereich butonu gecici olarak inaktif yapildi
 
 ## 16) Son Session Delta (2026-08-08)
-- Commit: 0280cd5 -> Artztbereich tabli Phase-1 uygulandi (Profil/Randevu/Anfragen)
+- Commit: 0280cd5 -> Arztbereich tabli Phase-1 uygulandi (Profil/Randevu/Anfragen)
