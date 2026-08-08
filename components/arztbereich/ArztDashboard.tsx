@@ -40,8 +40,8 @@ type ProfileForm = {
   website: string;
   about: string;
   expertise: string;
-  languages: string;
-  insuranceModels: string;
+  languages: string[];
+  insuranceModels: string[];
   emergencyNote: string;
 };
 
@@ -58,8 +58,13 @@ type AppointmentForm = {
   calendarConnectionStatus: "Nicht verbunden" | "Verbunden";
 };
 
+type LegacyProfileForm = Omit<ProfileForm, "languages" | "insuranceModels"> & {
+  languages?: string[] | string;
+  insuranceModels?: string[] | string;
+};
+
 type RequestStatus = "Neu" | "In Bearbeitung" | "Erledigt";
-type DashboardTab = "profil" | "randevu" | "anfragen";
+type DashboardTab = "profil" | "termine" | "anfragen";
 
 type IncomingRequest = {
   id: string;
@@ -81,6 +86,34 @@ const WEEKDAY_CONFIG: Array<{ key: keyof AvailabilityForm; label: string }> = [
   { key: "sunday", label: "Sonntag" },
 ];
 
+const LANGUAGE_OPTIONS = [
+  "Deutsch",
+  "Englisch",
+  "Türkisch",
+  "Arabisch",
+  "Bosnisch/Kroatisch/Serbisch",
+  "Französisch",
+  "Spanisch",
+  "Italienisch",
+  "Rumänisch",
+  "Ukrainisch",
+];
+
+const INSURANCE_OPTIONS = ["OEGK", "Wahlarzt", "Privat", "SVS", "BVAEB", "KFA", "Selbstzahler"];
+
+const WORKING_HOUR_OPTIONS = [
+  "07:00 - 12:00",
+  "08:00 - 12:00",
+  "08:00 - 16:00",
+  "08:30 - 13:00",
+  "08:30 - 16:00",
+  "09:00 - 13:00",
+  "09:00 - 17:00",
+  "10:00 - 18:00",
+  "Geschlossen",
+  "Nach Vereinbarung",
+];
+
 function getDefaultProfile(doctor: ArztDashboardDoctor): ProfileForm {
   return {
     name: doctor.name,
@@ -93,8 +126,8 @@ function getDefaultProfile(doctor: ArztDashboardDoctor): ProfileForm {
     about:
       "Ich begleite Patientinnen und Patienten mit klarem Ablauf, transparenter Kommunikation und individueller Beratung.",
     expertise: "Akutsprechstunde, Vorsorge, Verlaufskontrollen",
-    languages: "Deutsch, Englisch",
-    insuranceModels: "OEGK, Privat",
+    languages: ["Deutsch", "Englisch"],
+    insuranceModels: ["OEGK", "Privat"],
     emergencyNote: "Bei akuten Beschwerden bitte vorab telefonisch Kontakt aufnehmen.",
   };
 }
@@ -175,6 +208,45 @@ function readJsonFromStorage<T>(key: string): T | null {
   }
 }
 
+function normalizeStoredProfile(rawProfile: LegacyProfileForm | null, doctor: ArztDashboardDoctor): ProfileForm {
+  const fallback = getDefaultProfile(doctor);
+  if (!rawProfile) {
+    return fallback;
+  }
+
+  const languages = Array.isArray(rawProfile.languages)
+    ? rawProfile.languages
+    : typeof rawProfile.languages === "string"
+      ? rawProfile.languages
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : fallback.languages;
+
+  const insuranceModels = Array.isArray(rawProfile.insuranceModels)
+    ? rawProfile.insuranceModels
+    : typeof rawProfile.insuranceModels === "string"
+      ? rawProfile.insuranceModels
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : fallback.insuranceModels;
+
+  return {
+    ...fallback,
+    ...rawProfile,
+    languages,
+    insuranceModels,
+  };
+}
+
+function toggleSelection(current: string[], value: string) {
+  if (current.includes(value)) {
+    return current.filter((item) => item !== value);
+  }
+  return [...current, value];
+}
+
 function formatDateTime(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -220,11 +292,11 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
     const availabilityStorageKey = `terminboerse_arzt_availability_${selectedDoctor.id}`;
     const appointmentStorageKey = `terminboerse_arzt_appointments_${selectedDoctor.id}`;
 
-    const storedProfile = readJsonFromStorage<ProfileForm>(profileStorageKey);
+    const storedProfile = readJsonFromStorage<LegacyProfileForm>(profileStorageKey);
     const storedAvailability = readJsonFromStorage<AvailabilityForm>(availabilityStorageKey);
     const storedAppointmentSettings = readJsonFromStorage<AppointmentForm>(appointmentStorageKey);
 
-    setProfileForm(storedProfile ?? getDefaultProfile(selectedDoctor));
+    setProfileForm(normalizeStoredProfile(storedProfile, selectedDoctor));
     setAvailabilityForm(storedAvailability ?? getDefaultAvailability());
     setAppointmentForm(storedAppointmentSettings ?? getDefaultAppointmentSettings());
     setSavedProfile(false);
@@ -271,10 +343,6 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
   }
 
   const expertiseList = profileForm.expertise
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-  const languageList = profileForm.languages
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
@@ -332,12 +400,12 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab("randevu")}
+            onClick={() => setActiveTab("termine")}
             className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-              activeTab === "randevu" ? "bg-sky-700 text-white" : "bg-sky-100 text-sky-800 hover:bg-sky-200"
+              activeTab === "termine" ? "bg-sky-700 text-white" : "bg-sky-100 text-sky-800 hover:bg-sky-200"
             }`}
           >
-            Randevu
+            Termine
           </button>
           <button
             type="button"
@@ -400,7 +468,7 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
                 </label>
 
                 <label className="block text-sm sm:col-span-2">
-                  <span className="mb-1 block text-slate-600">Hakkinda</span>
+                  <span className="mb-1 block text-slate-600">Über mich</span>
                   <textarea
                     value={profileForm.about}
                     onChange={(event) => setProfileForm((prev) => (prev ? { ...prev, about: event.target.value } : prev))}
@@ -409,7 +477,7 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
                 </label>
 
                 <label className="block text-sm sm:col-span-2">
-                  <span className="mb-1 block text-slate-600">Uzmanlik alanlari (virgul ile)</span>
+                  <span className="mb-1 block text-slate-600">Spezialisierungen (Komma-getrennt)</span>
                   <input
                     value={profileForm.expertise}
                     onChange={(event) => setProfileForm((prev) => (prev ? { ...prev, expertise: event.target.value } : prev))}
@@ -417,25 +485,65 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
                   />
                 </label>
 
-                <label className="block text-sm">
-                  <span className="mb-1 block text-slate-600">Diller (virgul ile)</span>
-                  <input
-                    value={profileForm.languages}
-                    onChange={(event) => setProfileForm((prev) => (prev ? { ...prev, languages: event.target.value } : prev))}
-                    className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none ring-sky-300 focus:ring"
-                  />
-                </label>
+                <div className="block text-sm sm:col-span-2">
+                  <span className="mb-1 block text-slate-600">Sprachen (Mehrfachauswahl)</span>
+                  <div className="flex flex-wrap gap-2">
+                    {LANGUAGE_OPTIONS.map((language) => {
+                      const isActive = profileForm.languages.includes(language);
+                      return (
+                        <button
+                          key={language}
+                          type="button"
+                          onClick={() =>
+                            setProfileForm((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    languages: toggleSelection(prev.languages, language),
+                                  }
+                                : prev,
+                            )
+                          }
+                          className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                            isActive ? "bg-sky-600 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                          }`}
+                        >
+                          {language}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
 
-                <label className="block text-sm">
-                  <span className="mb-1 block text-slate-600">Sigorta modelleri</span>
-                  <input
-                    value={profileForm.insuranceModels}
-                    onChange={(event) =>
-                      setProfileForm((prev) => (prev ? { ...prev, insuranceModels: event.target.value } : prev))
-                    }
-                    className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none ring-sky-300 focus:ring"
-                  />
-                </label>
+                <div className="block text-sm sm:col-span-2">
+                  <span className="mb-1 block text-slate-600">Versicherungsmodelle (Mehrfachauswahl)</span>
+                  <div className="flex flex-wrap gap-2">
+                    {INSURANCE_OPTIONS.map((insurance) => {
+                      const isActive = profileForm.insuranceModels.includes(insurance);
+                      return (
+                        <button
+                          key={insurance}
+                          type="button"
+                          onClick={() =>
+                            setProfileForm((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    insuranceModels: toggleSelection(prev.insuranceModels, insurance),
+                                  }
+                                : prev,
+                            )
+                          }
+                          className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                            isActive ? "bg-emerald-600 text-white" : "bg-emerald-100 text-emerald-800 hover:bg-emerald-200"
+                          }`}
+                        >
+                          {insurance}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
 
                 <label className="block text-sm">
                   <span className="mb-1 block text-slate-600">Telefon</span>
@@ -467,7 +575,7 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
                 </label>
 
                 <label className="block text-sm sm:col-span-2">
-                  <span className="mb-1 block text-slate-600">Acil not</span>
+                  <span className="mb-1 block text-slate-600">Hinweis für Akutfälle</span>
                   <textarea
                     value={profileForm.emergencyNote}
                     onChange={(event) =>
@@ -505,7 +613,7 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
                   {WEEKDAY_CONFIG.map((item) => (
                     <label key={item.key} className="flex items-center gap-3 text-sm">
                       <span className="w-28 shrink-0 font-semibold text-slate-700">{item.label}</span>
-                      <input
+                      <select
                         value={availabilityForm[item.key] ?? ""}
                         onChange={(event) =>
                           setAvailabilityForm((prev) => ({
@@ -514,7 +622,13 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
                           }))
                         }
                         className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none ring-sky-300 focus:ring"
-                      />
+                      >
+                        {WORKING_HOUR_OPTIONS.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
                     </label>
                   ))}
                 </div>
@@ -545,7 +659,7 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
                   <p className="mt-1">{profileForm.address}</p>
                   <p className="mt-1">Telefon: {profileForm.phone || "Nicht angegeben"}</p>
                   <p className="mt-1">E-Mail: {profileForm.email || "Nicht angegeben"}</p>
-                  <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Uzmanliklar</p>
+                  <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Spezialisierungen</p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {expertiseList.map((item) => (
                       <span key={item} className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
@@ -553,7 +667,31 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
                       </span>
                     ))}
                   </div>
-                  <p className="mt-3 text-xs text-slate-600">Diller: {languageList.join(", ") || "Belirtilmedi"}</p>
+                  <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Sprachen</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {profileForm.languages.length > 0 ? (
+                      profileForm.languages.map((item) => (
+                        <span key={item} className="rounded-full bg-sky-100 px-2 py-1 text-xs font-semibold text-sky-800">
+                          {item}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-xs text-slate-500">Nicht angegeben</span>
+                    )}
+                  </div>
+
+                  <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Versicherung</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {profileForm.insuranceModels.length > 0 ? (
+                      profileForm.insuranceModels.map((item) => (
+                        <span key={item} className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-800">
+                          {item}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-xs text-slate-500">Nicht angegeben</span>
+                    )}
+                  </div>
                 </div>
               </article>
             </div>
@@ -561,17 +699,17 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
         </>
       ) : null}
 
-      {activeTab === "randevu" ? (
+      {activeTab === "termine" ? (
         <section className="mt-6 grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
           <article className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="inline-flex items-center gap-2 text-lg font-bold text-slate-900">
               <CalendarPlus2 className="h-5 w-5 text-sky-700" />
-              Randevu ayarlari
+              Termin-Einstellungen
             </h2>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <label className="block text-sm">
-                <span className="mb-1 block text-slate-600">Slot suresi (dk)</span>
+                <span className="mb-1 block text-slate-600">Slot-Dauer (Minuten)</span>
                 <input
                   type="number"
                   min={5}
@@ -587,7 +725,7 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
               </label>
 
               <label className="block text-sm">
-                <span className="mb-1 block text-slate-600">Buffer (dk)</span>
+                <span className="mb-1 block text-slate-600">Puffer (Minuten)</span>
                 <input
                   type="number"
                   min={0}
@@ -603,7 +741,7 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
               </label>
 
               <label className="block text-sm">
-                <span className="mb-1 block text-slate-600">Iptal siniri (saat)</span>
+                <span className="mb-1 block text-slate-600">Storno-Frist (Stunden)</span>
                 <input
                   type="number"
                   min={0}
@@ -619,7 +757,7 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
               </label>
 
               <label className="block text-sm sm:col-span-2">
-                <span className="mb-1 block text-slate-600">Randevu tipleri (virgul ile)</span>
+                <span className="mb-1 block text-slate-600">Terminarten (Komma-getrennt)</span>
                 <input
                   value={appointmentForm.appointmentTypes}
                   onChange={(event) =>
@@ -633,7 +771,7 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
               </label>
 
               <label className="block text-sm sm:col-span-2">
-                <span className="mb-1 block text-slate-600">Termin oncesi not</span>
+                <span className="mb-1 block text-slate-600">Hinweis vor dem Termin</span>
                 <textarea
                   value={appointmentForm.preparationNote}
                   onChange={(event) =>
@@ -681,7 +819,7 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
                 className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
               >
                 <Save className="h-4 w-4" />
-                Randevu-Einstellungen speichern
+                Termin-Einstellungen speichern
               </button>
               {savedAppointments ? (
                 <p className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-700">
@@ -714,15 +852,15 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
             </article>
 
             <article className="rounded-[2rem] border border-sky-200 bg-sky-50 p-6 shadow-sm">
-              <h2 className="text-lg font-bold text-slate-900">Randevu-Vorschau</h2>
-              <p className="mt-2 text-sm text-slate-700">Aktive Parameter fuer automatische Slot-Erzeugung.</p>
+              <h2 className="text-lg font-bold text-slate-900">Termin-Vorschau</h2>
+              <p className="mt-2 text-sm text-slate-700">Aktive Parameter für automatische Slot-Erzeugung.</p>
               <div className="mt-4 rounded-2xl border border-sky-200 bg-white p-4 text-sm text-slate-700">
-                <p>Slot: {appointmentForm.slotDurationMinutes} dk</p>
-                <p>Buffer: {appointmentForm.bufferMinutes} dk</p>
-                <p>Iptal: {appointmentForm.cancellationHours} saat once</p>
+                <p>Slot: {appointmentForm.slotDurationMinutes} Min</p>
+                <p>Buffer: {appointmentForm.bufferMinutes} Min</p>
+                <p>Storno: {appointmentForm.cancellationHours} Stunden vorher</p>
                 <p>Neue Patienten: {appointmentForm.acceptsNewPatients ? "Ja" : "Nein"}</p>
                 <p>Online Termine: {appointmentForm.onlineAppointments ? "Ja" : "Nein"}</p>
-                <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Termin tipleri</p>
+                <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Terminarten</p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {appointmentTypeList.map((item) => (
                     <span key={item} className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
