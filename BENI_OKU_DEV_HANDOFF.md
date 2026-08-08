@@ -1,6 +1,6 @@
 # TerminBoerse.at - DEV HANDOFF (Mola Sonrasi Buradan Devam)
 
-Son guncelleme: 2026-08-07
+Son guncelleme: 2026-08-08
 Durum: Aktif, production canli
 
 ## 1) Proje Ozeti
@@ -17,7 +17,7 @@ Durum: Aktif, production canli
 - Vercel org id: team_ftvVcjINKJpbanL2F2bWH0um
 - GitHub repo: https://github.com/ilhanyalcin3307/terminboerse
 - Aktif branch: main
-- Son commit (bu not yazilirken): c72f891
+- Son commit (bu not yazilirken): 14cac9b
 
 ## 3) Calistirma / Test Komutlari
 - Local dev: npm run dev
@@ -90,6 +90,42 @@ Not:
    - Baslik guncellendi: "Arzttermin Wien: Kurzfristige Termine heute | Terminbörse.at"
    - Metadata guclendirildi: canonical, OpenGraph, Twitter, keywords, robots
    - JSON-LD eklendi: Organization + WebSite (SearchAction) + WebPage + FAQPage
+8. Google Search Console HTML verification eklendi
+   - app/layout.tsx icinde metadata.verification.google tanimlandi
+   - Token canliya deploy edildi
+9. Search Console dogrulama hatasi root-cause analizi tamamlandi
+   - Domain Property yontemi icin DNS TXT zorunlu oldugu teyit edildi
+   - Mevcut HTML meta tag yontemi URL-Prefix property icin dogru ve canli
+10. Sitemap implementasyonu tamamlandi ve canliya alindi
+   - Dosya: app/sitemap.ts
+   - Icerik: statik sayfalar + dinamik /arzt/[id] URL'leri
+   - Canli endpoint: https://www.terminboerse.at/sitemap.xml
+11. SEO odakli doktor URL migration tamamlandi
+   - Eski format: /arzt/ARZTOGD.20467685
+   - Yeni format: /arzt/dr-wolfgang-knogler-hausarzt-allgemeinmedizin-10-bezirk-arztogd-20467685
+   - Link uretimi: components/arzt/ArztDirectory.tsx
+   - Slug helper + resolver: lib/doctors.ts
+   - Doktor detail canonical metadata: app/arzt/[id]/page.tsx
+   - Sitemap doktor URL'leri yeni slug formatina gecti: app/sitemap.ts
+12. Doktor Community (Rating + Views + Son 3 Yorum) MVP eklendi
+   - UI komponenti: components/arzt/DoctorCommunityPanel.tsx
+   - API endpoint: app/api/doctor-community/[doctorId]/route.ts
+   - Community helper/store: lib/doctorCommunity.ts
+   - Doktor detay sayfasina entegre edildi: app/arzt/[id]/page.tsx
+   - Not: Su an yorum/rating gonderimi login beklediginden pasif butonlu
+   - Not: View artisi su an process-memory tabanli (MVP), kalici DB/KV baglantisi sonraki adim
+13. Lead claim link SEO slug ile uyumlu hale getirildi
+   - app/api/lead/route.ts icindeki claim URL yeni slug formatina guncellendi
+14. Artztbereich MVP route + panel eklendi
+   - Route: app/artztbereich/page.tsx
+   - UI: components/arztbereich/ArztDashboard.tsx
+15. Header'daki Artztbereich girisi gecici olarak inaktif yapildi
+   - Dosya: components/layout/SiteShell.tsx
+16. Artztbereich paneli sekmeli yapıya tasindi (Phase 1 baslandi)
+   - Sekmeler: Profil / Randevu / Anfragen
+   - Profil: Hakkinda, uzmanliklar, diller, sigorta modelleri, acil not + temel iletisim
+   - Randevu: slot suresi, buffer, iptal siniri, yeni hasta kabul, online randevu, randevu tipleri
+   - Not: Google Calendar baglantisi placeholder olarak eklendi (sonraki adimda entegrasyon)
 
 ## 8) Bekleyen / Sonraki Isler
 1. Google Places API entegrasyonu (SONRA YAPILACAK)
@@ -97,6 +133,15 @@ Not:
    - Onerilen model: bir kere backfill + place_id saklama + secmeli/periyodik refresh
 2. Maliyet ve policy uyumlu refresh stratejisi
    - Aylik kismi guncelleme veya sadece aktif doktorlar
+3. (Opsiyonel) Domain Property icin DNS TXT kaydi eklemek
+   - Kayit: google-site-verification=vrWQo-G7ko2w-_8-4LOGewb4h2e7890ZeETG8HaGYzw
+   - Not: Bu adim sadece Domain Property kullanilacaksa gerekli
+4. Artztbereich roadmap (oncelikli)
+   - Phase 1 (tamamlanan): Sekmeli temel panel + localStorage tabanli kayitlar
+   - Phase 2 (siradaki): Login baglantisi + doktor bazli yetkilendirme + kayitlari API/DB'ye tasima
+   - Phase 3: Randevu akisi backend + durum yonetimi + basit takvim gorunumu
+   - Phase 4: Google Calendar entegrasyonu (oauth, event sync, availability sync)
+   - Phase 5: Bildirimler (mail), audit log, daha gelismis analizler
 
 ## 9) Devam Ederken Dikkat
 - Iliskisiz degisiklikleri geri alma (rollback) yapma.
@@ -105,8 +150,10 @@ Not:
 
 ## 10) Kaldigimiz Yer (Net)
 - Sistem canli ve stabil.
-- Ana odak sonraki adim: Google Places API icin teknik implementasyon plani ve sonra kodlama.
-- Bugun yapilmadi; bilerek ertelendi.
+- Sitemap canli ve Search Console'a gonderime hazir durumda.
+- Doktor detay URL'leri SEO slug standardina tasindi ve canli.
+- Search Console icin URL-Prefix verification teknik olarak hazir; Domain Property icin DNS TXT gerekir.
+- Sonraki ana odak Artztbereich Phase 2 (login + persistent storage) ve sonrasinda Google Calendar hazirligi.
 
 ## 11) Mola Sonrasi Hizli Baslangic Checklist
 1. git pull
@@ -114,4 +161,25 @@ Not:
 3. npm run lint
 4. npm run build
 5. BENI_OKU_DEV_HANDOFF.md dosyasini oku
-6. Google Places entegrasyon task'ina gec
+6. Search Console'da sitemap durumunu kontrol et (islenme/hatali URL var mi)
+7. Domain Property kullanilacaksa DNS TXT durumunu dogrula
+8. Google Places entegrasyon task'ina gec
+
+## 12) Son Session Delta (2026-08-07)
+- Commit: 8670ddf -> Google Search Console verification meta eklendi (app/layout.tsx)
+- Commit: 4cd5d09 -> app/sitemap.ts eklendi, sitemap.xml canliya alindi
+- Production alias dogrulandi: https://www.terminboerse.at
+
+## 13) Son Session Delta (2026-08-08)
+- Commit: ad9c19d -> doktor detay URL'leri SEO slug formatina gecirildi
+- Canli sitemap dogrulamasi: doktor URL'leri artik slug tabanli listeleniyor
+
+## 14) Son Session Delta (2026-08-08)
+- Commit: 80a5dd2 -> doktor detay sayfasina community panel eklendi (rating/views/son 3 yorum)
+- Yeni API: /api/doctor-community/[doctorId]
+- Community write aksiyonlari login sonrasi aktive edilecek sekilde pasif birakildi
+
+## 15) Son Session Delta (2026-08-08)
+- Commit: 8807d12 -> Artztbereich MVP route + panel eklendi
+- Commit: 8bdefe4 -> /arztbereich rotasi /artztbereich olarak degisti
+- Commit: 14cac9b -> Header Artztbereich butonu gecici olarak inaktif yapildi
