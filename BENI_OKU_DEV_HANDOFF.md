@@ -17,7 +17,7 @@ Durum: Aktif, production canli
 - Vercel org id: team_ftvVcjINKJpbanL2F2bWH0um
 - GitHub repo: https://github.com/ilhanyalcin3307/terminboerse
 - Aktif branch: main
-- Son commit (bu not yazilirken): 14cac9b
+- Son commit (bu not yazilirken): 0280cd5
 
 ## 3) Calistirma / Test Komutlari
 - Local dev: npm run dev
@@ -183,3 +183,6 @@ Not:
 - Commit: 8807d12 -> Artztbereich MVP route + panel eklendi
 - Commit: 8bdefe4 -> /arztbereich rotasi /artztbereich olarak degisti
 - Commit: 14cac9b -> Header Artztbereich butonu gecici olarak inaktif yapildi
+
+## 16) Son Session Delta (2026-08-08)
+- Commit: 0280cd5 -> Artztbereich tabli Phase-1 uygulandi (Profil/Randevu/Anfragen)
