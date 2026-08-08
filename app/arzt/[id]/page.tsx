@@ -1,10 +1,12 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { CalendarClock, Globe, Mail, MapPin, PhoneCall, Route, ShieldCheck, Stethoscope } from "lucide-react";
 import doctorsJson from "@/data/doctors.json";
 import { AppointmentRequestModal } from "@/components/arzt/AppointmentRequestModal";
 import {
-  findDoctorById,
+  findDoctorBySeoSlug,
+  getDoctorSeoSlug,
   getDoctorWorkingHours,
   getGoogleMapsEmbedUrl,
   getGoogleMapsUrl,
@@ -18,12 +20,48 @@ type ArztDetailPageProps = {
 
 export const dynamic = "force-dynamic";
 
+export async function generateMetadata({ params }: Omit<ArztDetailPageProps, "searchParams">): Promise<Metadata> {
+  const { id } = await params;
+  const doctors = normalizeDoctorsData(doctorsJson);
+  const doctor = findDoctorBySeoSlug(doctors, decodeURIComponent(id));
+
+  if (!doctor) {
+    return {
+      title: "Arztprofil nicht gefunden | Terminbörse.at",
+      robots: {
+        index: false,
+        follow: false,
+      },
+    };
+  }
+
+  const canonicalSlug = getDoctorSeoSlug(doctor);
+  const title = `${doctor.name} in ${doctor.district}: ${doctor.specialty} | Terminbörse.at`;
+  const description = `Profil von ${doctor.name} (${doctor.specialty}) in ${doctor.district}. Adresse, Kontaktwege und direkte Termin-Anfrage auf Terminbörse.at.`;
+
+  return {
+    title,
+    description,
+    alternates: {
+      canonical: `/arzt/${canonicalSlug}`,
+    },
+    openGraph: {
+      title,
+      description,
+      url: `https://www.terminboerse.at/arzt/${canonicalSlug}`,
+      type: "website",
+      locale: "de_AT",
+      siteName: "Terminbörse.at",
+    },
+  };
+}
+
 export default async function ArztDetailPage({ params, searchParams }: ArztDetailPageProps) {
   const { id } = await params;
   const { claim } = await searchParams;
 
   const doctors = normalizeDoctorsData(doctorsJson);
-  const doctor = findDoctorById(doctors, id);
+  const doctor = findDoctorBySeoSlug(doctors, decodeURIComponent(id));
 
   if (!doctor) {
     notFound();

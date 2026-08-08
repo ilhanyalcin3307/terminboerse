@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 import doctorsJson from "@/data/doctors.json";
-import { normalizeDoctorsData } from "@/lib/doctors";
+import { getDoctorSeoSlug, normalizeDoctorsData } from "@/lib/doctors";
 
 const BASE_URL = "https://www.terminboerse.at";
 
@@ -58,7 +58,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       return true;
     })
     .map((doctor) => ({
-      url: `${BASE_URL}/arzt/${encodeURIComponent(doctor.id)}`,
+      url: `${BASE_URL}/arzt/${encodeURIComponent(getDoctorSeoSlug(doctor))}`,
       lastModified,
       changeFrequency: "weekly",
       priority: 0.7,

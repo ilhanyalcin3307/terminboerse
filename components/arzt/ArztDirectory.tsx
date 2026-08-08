@@ -15,7 +15,7 @@ import {
 import { AppointmentRequestModal } from "@/components/arzt/AppointmentRequestModal";
 import { DevAnalyticsPanel } from "@/components/analytics/DevAnalyticsPanel";
 import { trackEvent } from "@/lib/analytics";
-import { getGoogleMapsUrl, normalizeDoctorSearchText, type DoctorRecord } from "@/lib/doctors";
+import { getDoctorSeoSlug, getGoogleMapsUrl, normalizeDoctorSearchText, type DoctorRecord } from "@/lib/doctors";
 
 const ALL_SPECIALTIES = "Alle Fachbereiche";
 const ALL_DISTRICTS = "Alle Bezirke";
@@ -393,7 +393,7 @@ export function ArztDirectory({
                   category: doctor.specialty,
                   district: doctor.district,
                 });
-                router.push(`/arzt/${encodeURIComponent(doctor.id)}`);
+                router.push(`/arzt/${encodeURIComponent(getDoctorSeoSlug(doctor))}`);
               }}
               className="cursor-pointer rounded-[1.6rem] border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
             >
@@ -470,7 +470,7 @@ export function ArztDirectory({
 
               <div className="mt-4 grid gap-2 sm:grid-cols-2">
                 <Link
-                  href={`/arzt/${encodeURIComponent(doctor.id)}`}
+                  href={`/arzt/${encodeURIComponent(getDoctorSeoSlug(doctor))}`}
                   onClick={(event) => {
                     event.stopPropagation();
                     trackEvent("cta_clicked", {

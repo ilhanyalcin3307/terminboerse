@@ -347,6 +347,39 @@ export function findDoctorById(doctors: DoctorRecord[], id: string) {
   return doctors.find((doctor) => doctor.id === id);
 }
 
+function normalizeSlugSource(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/ß/g, "ss")
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function normalizeSlugId(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+export function getDoctorSeoSlug(doctor: Pick<DoctorRecord, "id" | "name" | "specialty" | "district">) {
+  const namePart = normalizeSlugSource(doctor.name);
+  const specialtyPart = normalizeSlugSource(doctor.specialty);
+  const districtPart = normalizeSlugSource(doctor.district);
+  const idPart = normalizeSlugId(doctor.id);
+
+  return [namePart, specialtyPart, districtPart, idPart].filter(Boolean).join("-");
+}
+
+export function findDoctorBySeoSlug(doctors: DoctorRecord[], slug: string) {
+  const normalizedTarget = slug.trim().toLowerCase();
+  return doctors.find((doctor) => getDoctorSeoSlug(doctor) === normalizedTarget);
+}
+
 export function getDoctorWorkingHours(doctor: DoctorRecord): WorkingHoursEntry[] {
   return [
     {
