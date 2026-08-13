@@ -2,20 +2,24 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BellRing,
+  CalendarClock,
   CircleCheckBig,
   Clock3,
   HeartPulse,
   Mail,
   MapPin,
+  Search,
   ShieldCheck,
+  TrendingUp,
   X,
 } from "lucide-react";
 import { DevAnalyticsPanel } from "@/components/analytics/DevAnalyticsPanel";
 import { prependLocalStorageItem, trackEvent } from "@/lib/analytics";
-import type { DoctorTickerItem } from "@/lib/doctors";
+import { getDoctorSeoSlug, normalizeDoctorSearchText, type DoctorRecord, type DoctorTickerItem } from "@/lib/doctors";
+import apothekenJson from "@/data/APOTHEKEOGD.json";
 
 type LandingPageProps = {
   initialCategory?: string;
@@ -47,6 +51,68 @@ type FaqItem = {
   answer: string;
 };
 
+type DoctorSearchPayload = {
+  doctors?: DoctorRecord[];
+};
+
+type UpcomingDoctorSlotsItem = {
+  doctorId: string;
+  doctorName: string;
+  specialty: string;
+  district: string;
+  slots: Array<{ id?: string; start: string; end: string }>;
+};
+
+type UpcomingDoctorSlotsPayload = {
+  ok?: boolean;
+  items?: UpcomingDoctorSlotsItem[];
+};
+
+type TopViewedDoctorItem = {
+  doctorId: string;
+  doctorName: string;
+  specialty: string;
+  district: string;
+  profileViews: number;
+};
+
+type TopViewedDoctorsPayload = {
+  ok?: boolean;
+  items?: TopViewedDoctorItem[];
+};
+
+type ApothekeFeatureCollection = {
+  type?: string;
+  features?: ApothekeFeature[];
+};
+
+type ApothekeFeature = {
+  id?: string;
+  geometry?: {
+    coordinates?: number[];
+  };
+  properties?: {
+    BEZEICHNUNG?: string;
+    BEZIRK?: number | string;
+    ADRESSE?: string;
+    TELEFON?: string;
+    EMAIL?: string;
+    WEBLINK1?: string | null;
+  };
+};
+
+type ApothekeItem = {
+  id: string;
+  name: string;
+  district: string;
+  address: string;
+  phone: string;
+  email: string;
+  website: string;
+  lat: number | null;
+  lng: number | null;
+};
+
 const fallbackDistricts = [
   "All Wien",
   "01. Innere Stadt",
@@ -63,6 +129,8 @@ const fallbackCategories = [
   "Augenheilkunde",
   "Orthopädie",
 ];
+
+const ALL_SPECIALTIES = "Alle Fachbereiche";
 
 const seoQuickLinks: SeoQuickLink[] = [
   { label: "Hausarzt 1100 Wien", search: "Hausarzt 1100 Wien" },
@@ -87,9 +155,9 @@ const faqItems: FaqItem[] = [
       "Nein. Die Suche und Termin-Anfrage für Patientinnen und Patienten ist kostenfrei.",
   },
   {
-    question: "Wie funktioniert der Termin-Alarm?",
+    question: "Kann ich auf Terminbörse.at auch Apotheken in Wien suchen?",
     answer:
-      "Du hinterlegst E-Mail und gewünschten Fachbereich. Sobald passende Optionen verfügbar sind, informieren wir dich zuerst.",
+      "Ja. Im Apotheken-Bereich auf der Startseite kannst du nach Name oder Adresse suchen und gezielt nach Bezirken filtern.",
   },
   {
     question: "Ich bin Ärztin/Arzt in Wien. Wie erhalte ich Anfragen?",
@@ -103,6 +171,70 @@ function isValidContact(contact: string) {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const phoneRegex = /^\+?[0-9\s()\-]{7,}$/;
   return emailRegex.test(trimmed) || phoneRegex.test(trimmed);
+}
+
+function formatSlotWindow(start: string, end: string) {
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    return "-";
+  }
+
+  const day = new Intl.DateTimeFormat("de-AT", {
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+  }).format(startDate);
+  const startTime = new Intl.DateTimeFormat("de-AT", { hour: "2-digit", minute: "2-digit" }).format(startDate);
+  const endTime = new Intl.DateTimeFormat("de-AT", { hour: "2-digit", minute: "2-digit" }).format(endDate);
+
+  return `${day} · ${startTime} - ${endTime}`;
+}
+
+function normalizeWebsite(url: string) {
+  const trimmed = url.trim();
+  if (!trimmed) {
+    return "";
+  }
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    return trimmed;
+  }
+  return `https://${trimmed}`;
+}
+
+function getMapsUrl(apotheke: ApothekeItem) {
+  if (typeof apotheke.lat === "number" && typeof apotheke.lng === "number") {
+    return `https://www.google.com/maps/search/?api=1&query=${apotheke.lat},${apotheke.lng}`;
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${apotheke.address}, Wien`)}`;
+}
+
+function normalizeApothekenData(data: unknown): ApothekeItem[] {
+  const source = data as ApothekeFeatureCollection;
+  const features = Array.isArray(source?.features) ? source.features : [];
+  return features
+    .map((feature, index) => {
+      const properties = feature.properties ?? {};
+      const coordinates = feature.geometry?.coordinates;
+      const districtRaw = properties.BEZIRK;
+      const districtNumber = typeof districtRaw === "number" ? districtRaw : Number.parseInt(String(districtRaw ?? ""), 10);
+      const district = Number.isFinite(districtNumber)
+        ? `${String(districtNumber).padStart(2, "0")}. Bezirk`
+        : "Unbekannter Bezirk";
+
+      return {
+        id: feature.id ?? `apotheke-${index}`,
+        name: (properties.BEZEICHNUNG ?? "Apotheke").trim(),
+        district,
+        address: (properties.ADRESSE ?? "Adresse nicht verfügbar").trim(),
+        phone: (properties.TELEFON ?? "").trim(),
+        email: (properties.EMAIL ?? "").trim(),
+        website: normalizeWebsite(properties.WEBLINK1 ?? ""),
+        lng: Array.isArray(coordinates) && Number.isFinite(coordinates[0]) ? coordinates[0] : null,
+        lat: Array.isArray(coordinates) && Number.isFinite(coordinates[1]) ? coordinates[1] : null,
+      };
+    })
+    .filter((item) => item.name.length > 0);
 }
 
 export function LandingPage({
@@ -122,7 +254,7 @@ export function LandingPage({
   const availableDoctorSpecialties = useMemo(() => doctorSpecialties, [doctorSpecialties]);
   const availableDoctorDistricts = useMemo(() => doctorDistricts, [doctorDistricts]);
   const availableCategories = useMemo(() => {
-    const combined = new Set([...availableDoctorSpecialties, ...fallbackCategories]);
+    const combined = new Set([ALL_SPECIALTIES, ...availableDoctorSpecialties, ...fallbackCategories]);
     return Array.from(combined);
   }, [availableDoctorSpecialties]);
 
@@ -156,8 +288,15 @@ export function LandingPage({
   }, [incomingTickerItems]);
 
   const [district, setDistrict] = useState("All Wien");
-  const [category, setCategory] = useState(initialCategory ?? availableCategories[0] ?? "Dermatologie");
+  const [category, setCategory] = useState(initialCategory ?? ALL_SPECIALTIES);
+  const [doctorNameQuery, setDoctorNameQuery] = useState("");
+  const [doctorSuggestions, setDoctorSuggestions] = useState<DoctorRecord[]>([]);
+  const [isLoadingDoctorSuggestions, setIsLoadingDoctorSuggestions] = useState(false);
+  const [isDoctorSuggestionsOpen, setIsDoctorSuggestionsOpen] = useState(false);
+  const doctorSearchBoxRef = useRef<HTMLDivElement | null>(null);
   const [source, setSource] = useState("hero");
+  const [upcomingDoctorSlots, setUpcomingDoctorSlots] = useState<UpcomingDoctorSlotsItem[]>([]);
+  const [topViewedDoctors, setTopViewedDoctors] = useState<TopViewedDoctorItem[]>([]);
 
   const [nameInput, setNameInput] = useState("");
   const [contactInput, setContactInput] = useState("");
@@ -165,17 +304,60 @@ export function LandingPage({
   const [formDistrict, setFormDistrict] = useState("All Wien");
   const [formError, setFormError] = useState("");
 
-  const [alarmCategory, setAlarmCategory] = useState(initialCategory ?? availableCategories[0] ?? "Dermatologie");
-  const [alarmEmail, setAlarmEmail] = useState("");
-  const [alarmSubmitting, setAlarmSubmitting] = useState(false);
-  const [alarmSuccess, setAlarmSuccess] = useState(false);
-  const [alarmError, setAlarmError] = useState("");
+  const [apothekeSearch, setApothekeSearch] = useState("");
+  const [apothekeDistrict, setApothekeDistrict] = useState("Alle Bezirke");
+
+  const apotheken = useMemo(() => normalizeApothekenData(apothekenJson), []);
+  const apothekeDistrictOptions = useMemo(() => {
+    const unique = Array.from(new Set(apotheken.map((item) => item.district)));
+    const sorted = unique.sort((a, b) => a.localeCompare(b, "de", { numeric: true }));
+    return ["Alle Bezirke", ...sorted];
+  }, [apotheken]);
+
+  const filteredApotheken = useMemo(() => {
+    const query = apothekeSearch.trim().toLowerCase();
+
+    return apotheken
+      .filter((item) => {
+        if (apothekeDistrict !== "Alle Bezirke" && item.district !== apothekeDistrict) {
+          return false;
+        }
+
+        if (!query) {
+          return true;
+        }
+
+        const searchable = `${item.name} ${item.address} ${item.district}`.toLowerCase();
+        return searchable.includes(query);
+      })
+      .slice(0, 9);
+  }, [apothekeDistrict, apothekeSearch, apotheken]);
 
   const heroSummary = useMemo(() => {
-    return `${district} · ${category}`;
-  }, [district, category]);
+    const parts: string[] = [];
+    if (doctorNameQuery.trim()) {
+      parts.push(`Dr. Name: ${doctorNameQuery.trim()}`);
+    }
+    parts.push(district);
+    parts.push(category);
+    return parts.join(" · ");
+  }, [doctorNameQuery, district, category]);
 
   const heroDoctorCount = useMemo(() => {
+    if (district === "All Wien" && category === ALL_SPECIALTIES) {
+      return totalDoctors;
+    }
+
+    if (district !== "All Wien" && category === ALL_SPECIALTIES) {
+      let totalForDistrict = 0;
+      for (const [key, count] of Object.entries(byDistrictCategory)) {
+        if (key.startsWith(`${district}::`)) {
+          totalForDistrict += count;
+        }
+      }
+      return totalForDistrict;
+    }
+
     if (district === "All Wien") {
       return byCategory[category] ?? totalDoctors;
     }
@@ -184,12 +366,185 @@ export function LandingPage({
   }, [byCategory, byDistrictCategory, category, district, totalDoctors]);
 
   const heroSearchQuery = useMemo(() => {
-    if (district === "All Wien") {
-      return category;
+    const parts: string[] = [];
+
+    if (doctorNameQuery.trim()) {
+      parts.push(doctorNameQuery.trim());
     }
 
-    return `${category} ${district}`.trim();
-  }, [category, district]);
+    if (category !== ALL_SPECIALTIES) {
+      parts.push(category);
+    }
+
+    if (district !== "All Wien") {
+      parts.push(district);
+    }
+
+    return parts.join(" ").trim();
+  }, [doctorNameQuery, category, district]);
+
+  useEffect(() => {
+    const query = doctorNameQuery.trim();
+    if (query.length < 2) {
+      setDoctorSuggestions([]);
+      setIsLoadingDoctorSuggestions(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(async () => {
+      setIsLoadingDoctorSuggestions(true);
+
+      try {
+        const response = await fetch(`/api/doctors?q=${encodeURIComponent(query)}&page=1&pageSize=8`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error(`Doctors API failed with ${response.status}`);
+        }
+
+        const payload = (await response.json()) as DoctorSearchPayload;
+        const normalizedQuery = normalizeDoctorSearchText(query);
+        const doctors = Array.isArray(payload.doctors) ? payload.doctors : [];
+
+        const sorted = doctors
+          .slice()
+          .sort((a, b) => {
+            const aStarts = normalizeDoctorSearchText(a.name).startsWith(normalizedQuery) ? 0 : 1;
+            const bStarts = normalizeDoctorSearchText(b.name).startsWith(normalizedQuery) ? 0 : 1;
+            if (aStarts !== bStarts) {
+              return aStarts - bStarts;
+            }
+            return a.name.localeCompare(b.name, "de");
+          })
+          .slice(0, 6);
+
+        setDoctorSuggestions(sorted);
+        setIsDoctorSuggestionsOpen(true);
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          return;
+        }
+        setDoctorSuggestions([]);
+      } finally {
+        setIsLoadingDoctorSuggestions(false);
+      }
+    }, 180);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
+  }, [doctorNameQuery]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadUpcomingSlots() {
+      try {
+        const response = await fetch("/api/doctors/upcoming-slots", {
+          method: "GET",
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = (await response.json()) as UpcomingDoctorSlotsPayload;
+        if (!payload.ok || !Array.isArray(payload.items)) {
+          return;
+        }
+
+        setUpcomingDoctorSlots(payload.items);
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          return;
+        }
+        setUpcomingDoctorSlots([]);
+      }
+    }
+
+    void loadUpcomingSlots();
+
+    return () => {
+      controller.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadTopViewedDoctors() {
+      try {
+        const response = await fetch("/api/doctors/top-viewed", {
+          method: "GET",
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = (await response.json()) as TopViewedDoctorsPayload;
+        if (!payload.ok || !Array.isArray(payload.items)) {
+          return;
+        }
+
+        setTopViewedDoctors(payload.items);
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          return;
+        }
+        setTopViewedDoctors([]);
+      }
+    }
+
+    void loadTopViewedDoctors();
+
+    return () => {
+      controller.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    function closeWhenClickedOutside(event: MouseEvent) {
+      if (!doctorSearchBoxRef.current) {
+        return;
+      }
+
+      if (doctorSearchBoxRef.current.contains(event.target as Node)) {
+        return;
+      }
+
+      setIsDoctorSuggestionsOpen(false);
+    }
+
+    document.addEventListener("mousedown", closeWhenClickedOutside);
+    return () => {
+      document.removeEventListener("mousedown", closeWhenClickedOutside);
+    };
+  }, []);
+
+  function selectDoctorFromSuggestion(doctor: DoctorRecord) {
+    setDoctorNameQuery(doctor.name);
+    setDoctorSuggestions([]);
+    setIsDoctorSuggestionsOpen(false);
+
+    trackEvent("cta_clicked", {
+      source: "landing-hero-doctor-suggestion",
+      action: "doctor_profile_direct",
+      doctor_id: doctor.id,
+      category: doctor.specialty,
+      district: doctor.district,
+    });
+
+    router.push(`/arzt/${encodeURIComponent(getDoctorSeoSlug(doctor))}`);
+  }
 
   function handleHeroSearch() {
     trackEvent("cta_clicked", {
@@ -199,16 +554,21 @@ export function LandingPage({
       search_term: heroSearchQuery,
     });
 
-    const params = new URLSearchParams({
-      search: heroSearchQuery,
-      category,
-    });
+    const params = new URLSearchParams();
+
+    if (heroSearchQuery) {
+      params.set("search", heroSearchQuery);
+    }
+
+    if (category !== ALL_SPECIALTIES) {
+      params.set("category", category);
+    }
 
     if (district !== "All Wien") {
       params.set("district", district);
     }
 
-    router.push(`/arzt?${params.toString()}`);
+    router.push(params.toString() ? `/arzt?${params.toString()}` : "/arzt");
   }
 
   function openLeadModal(triggerSource: string, preselectedCategory?: string, preselectedDistrict?: string) {
@@ -280,54 +640,6 @@ export function LandingPage({
     }
   }
 
-  async function handleAlarmSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    const email = alarmEmail.trim();
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      setAlarmError("Bitte gib eine gültige E-Mail-Adresse ein.");
-      return;
-    }
-
-    setAlarmError("");
-    setAlarmSubmitting(true);
-
-    const entry = {
-      id: crypto.randomUUID(),
-      source: "termin-alarm",
-      email,
-      category: alarmCategory,
-      district: "All Wien",
-      createdAt: new Date().toISOString(),
-    };
-
-    try {
-      prependLocalStorageItem("terminboerse_alarm_leads", entry);
-
-      await fetch("/api/leads", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(entry),
-      });
-
-      trackEvent("lead_submitted", {
-        source: "termin-alarm",
-        category: alarmCategory,
-        district: "All Wien",
-        channel: "email",
-      });
-
-      setAlarmSuccess(true);
-      setAlarmEmail("");
-    } catch (error) {
-      console.error("Termin-Alarm konnte nicht gespeichert werden", error);
-      setAlarmError("Es gab ein Problem beim Speichern. Bitte versuche es erneut.");
-    } finally {
-      setAlarmSubmitting(false);
-    }
-  }
-
   return (
     <div className="relative min-h-screen overflow-x-clip bg-slate-50 text-slate-900">
       <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 pb-28 pt-6 sm:gap-10 sm:px-6 sm:pb-16 sm:pt-8 lg:px-8">
@@ -343,7 +655,58 @@ export function LandingPage({
             Die Börse für kurzfristige Arzttermine in Wien. Schnell, einfach & kostenfrei.
           </p>
 
-          <div className="mt-7 grid gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm md:grid-cols-[1fr_1fr_auto] md:gap-4 md:p-4">
+          <div className="mt-7 grid gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm md:grid-cols-[1fr_1fr_1fr_auto] md:gap-4 md:p-4">
+            <div ref={doctorSearchBoxRef} className="relative">
+              <label className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700">
+                <Search className="h-4 w-4 text-sky-600" />
+                <input
+                  value={doctorNameQuery}
+                  onFocus={() => {
+                    if (doctorNameQuery.trim().length >= 2) {
+                      setIsDoctorSuggestionsOpen(true);
+                    }
+                  }}
+                  onChange={(event) => {
+                    setDoctorNameQuery(event.target.value);
+                    if (event.target.value.trim().length >= 2) {
+                      setIsDoctorSuggestionsOpen(true);
+                    }
+                  }}
+                  className="w-full bg-transparent text-sm outline-none"
+                  placeholder="Arztname eingeben (optional)"
+                  aria-label="Arztname eingeben"
+                />
+              </label>
+
+              {isDoctorSuggestionsOpen && doctorNameQuery.trim().length >= 2 ? (
+                <div className="absolute left-0 right-0 z-20 mt-2 rounded-xl border border-slate-200 bg-white p-1 shadow-lg">
+                  {isLoadingDoctorSuggestions ? (
+                    <p className="px-3 py-2 text-xs text-slate-500">Suche läuft...</p>
+                  ) : doctorSuggestions.length > 0 ? (
+                    <ul className="max-h-64 overflow-auto">
+                      {doctorSuggestions.map((doctor) => (
+                        <li key={doctor.id}>
+                          <button
+                            type="button"
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              selectDoctorFromSuggestion(doctor);
+                            }}
+                            className="w-full rounded-lg px-3 py-2 text-left hover:bg-sky-50"
+                          >
+                            <p className="text-sm font-semibold text-slate-900">{doctor.name}</p>
+                            <p className="text-xs text-slate-600">{doctor.specialty} · {doctor.district}</p>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="px-3 py-2 text-xs text-slate-500">Keine passenden Ärzte gefunden.</p>
+                  )}
+                </div>
+              ) : null}
+            </div>
+
             <label className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700">
               <MapPin className="h-4 w-4 text-sky-600" />
               <select
@@ -405,50 +768,99 @@ export function LandingPage({
           </p>
         </section>
 
+        {topViewedDoctors.length > 0 ? (
+          <section className="rounded-2xl border border-sky-200 bg-gradient-to-r from-sky-50 via-white to-sky-50 p-4 shadow-sm">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="flex items-center gap-1.5 text-sm font-semibold text-sky-700">
+                <TrendingUp className="h-4 w-4" />
+                Meistgesuchte Ärzte
+              </p>
+              <p className="text-xs text-slate-500">Live-Ranking</p>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-5">
+              {topViewedDoctors.map((item, index) => (
+                <Link
+                  key={item.doctorId}
+                  href={`/arzt/${encodeURIComponent(getDoctorSeoSlug({ id: item.doctorId, name: item.doctorName, specialty: item.specialty, district: item.district }))}`}
+                  className="rounded-xl border border-sky-200 bg-white p-3 transition hover:border-sky-400 hover:shadow-sm"
+                >
+                  <p className="text-xs font-semibold text-sky-600">#{index + 1}</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-800">{item.doctorName}</p>
+                  <p className="mt-1 text-xs text-slate-500">{item.specialty} · {item.district}</p>
+                </Link>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
         <section className="rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 via-white to-emerald-50 p-4 shadow-sm">
           <div className="mb-2 flex items-center justify-between">
-            <p className="text-sm font-semibold text-emerald-700">Live Storno-Ticker</p>
-            <p className="text-xs text-slate-500">Vor 2 Minuten aktualisiert</p>
+            <p className="text-sm font-semibold text-emerald-700">Freie Termine in den nächsten 3 Tagen</p>
+            <p className="text-xs text-slate-500">Live aus Arztprofilen</p>
           </div>
-          <div className="grid gap-3 md:grid-cols-3">
-            {tickerItems.map((item) => (
-              <article key={`${item.district}-${item.title}`} className="rounded-xl border border-emerald-200 bg-white p-3">
-                <p className="text-sm font-semibold text-slate-800">🟢 {item.district} - {item.title}</p>
-                <p className="mt-1 text-sm text-slate-600">({item.time})</p>
-                <p className="mt-1 text-xs text-slate-500">{item.address}</p>
-                <button
-                  onClick={() => openLeadModal("ticker", item.category, item.district)}
-                  className="mt-3 inline-flex rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500"
-                >
-                  Termin sichern
-                </button>
-              </article>
-            ))}
-          </div>
+
+          {upcomingDoctorSlots.length > 0 ? (
+            <div className="grid gap-3 md:grid-cols-3">
+              {upcomingDoctorSlots.map((item) => (
+                <article key={item.doctorId} className="rounded-xl border border-emerald-200 bg-white p-3">
+                  <p className="text-sm font-semibold text-slate-800">🟢 {item.district} - {item.specialty}</p>
+                  <p className="mt-1 text-sm text-slate-600">{item.doctorName}</p>
+                  <p className="mt-1 text-xs text-slate-500">{formatSlotWindow(item.slots[0]?.start ?? "", item.slots[0]?.end ?? "")}</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {item.slots.slice(1).map((slot) => (
+                      <span key={slot.id ?? `${slot.start}-${slot.end}`} className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
+                        {formatSlotWindow(slot.start, slot.end)}
+                      </span>
+                    ))}
+                  </div>
+                  <Link
+                    href={`/arzt/${encodeURIComponent(getDoctorSeoSlug({ id: item.doctorId, name: item.doctorName, specialty: item.specialty, district: item.district }))}`}
+                    className="mt-3 inline-flex rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500"
+                  >
+                    Profil öffnen
+                  </Link>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-2 text-sm text-slate-600">Aktuell wurden noch keine freien 3-Tage-Slots veröffentlicht.</p>
+          )}
         </section>
 
         <section className="rounded-3xl border border-slate-200 bg-white p-6 md:p-8">
           <div className="mb-6 flex items-center gap-2">
             <ShieldCheck className="h-5 w-5 text-sky-600" />
-            <h2 className="text-2xl font-bold text-slate-900">So funktioniert es</h2>
+            <h2 className="text-2xl font-bold text-slate-900">Arzttermin in Wien finden: So nutzt du Terminbörse.at</h2>
           </div>
-          <div className="grid gap-4 md:grid-cols-3">
+          <p className="mb-4 max-w-3xl text-sm text-slate-600">
+            Suche gezielt nach Arzttermin Wien, kurzfristiger Arzttermin oder Facharzt Wien, prüfe freie 3-Tage-Slots und kontaktiere passende Profile direkt.
+          </p>
+          <div className="grid gap-4 md:grid-cols-4">
             <article className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <BellRing className="h-5 w-5 text-sky-600" />
-              <h3 className="mt-3 font-semibold text-slate-900">1. Benachrichtigung aktivieren</h3>
-              <p className="mt-2 text-sm text-slate-600">Wähle Fachbereich und Bezirk.</p>
+              <h3 className="mt-3 font-semibold text-slate-900">1. Fachbereich und Bezirk wählen</h3>
+              <p className="mt-2 text-sm text-slate-600">Starte mit deiner Suche nach Fachrichtung und Bezirk in Wien.</p>
+            </article>
+            <article className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <CalendarClock className="h-5 w-5 text-sky-600" />
+              <h3 className="mt-3 font-semibold text-slate-900">2. Freie 3-Tage-Slots prüfen</h3>
+              <p className="mt-2 text-sm text-slate-600">Sieh dir direkt die veröffentlichten Zeitfenster der nächsten 3 Tage an.</p>
             </article>
             <article className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <Mail className="h-5 w-5 text-sky-600" />
-              <h3 className="mt-3 font-semibold text-slate-900">2. Storno-Alert erhalten</h3>
-              <p className="mt-2 text-sm text-slate-600">Sobald ein Termin frei wird, wirst du benachrichtigt.</p>
+              <h3 className="mt-3 font-semibold text-slate-900">3. Passende Arztprofile vergleichen</h3>
+              <p className="mt-2 text-sm text-slate-600">Prüfe Standort, Fachbereich und Kontaktoptionen der angezeigten Profile.</p>
             </article>
             <article className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <CircleCheckBig className="h-5 w-5 text-sky-600" />
-              <h3 className="mt-3 font-semibold text-slate-900">3. Direkt buchen</h3>
-              <p className="mt-2 text-sm text-slate-600">Gehe ohne monatelange Wartezeit zum Termin.</p>
+              <h3 className="mt-3 font-semibold text-slate-900">4. Direkt Termin-Anfrage senden</h3>
+              <p className="mt-2 text-sm text-slate-600">Nimm direkt Kontakt auf und frage deinen Wunschtermin bei der Ordination an.</p>
             </article>
           </div>
+          <p className="mt-4 text-xs text-slate-500">
+            Hinweis: Freie 3-Tage-Slots zeigen aktuelle Verfügbarkeiten, Terminbörse.at vermittelt jedoch Kontakte und Anfragen und garantiert keinen Soforttermin.
+          </p>
         </section>
 
         <section className="rounded-3xl border border-slate-200 bg-white p-6 md:p-8">
@@ -474,44 +886,78 @@ export function LandingPage({
           </div>
         </section>
 
-        <section className="rounded-3xl border border-amber-200 bg-gradient-to-r from-amber-50 via-white to-amber-50 p-6 md:p-8">
-          <h2 className="text-2xl font-bold text-slate-900">Kein passender Termin frei?</h2>
-          <p className="mt-2 text-sm text-slate-600">Aktiviere den Termin-Alarm und erhalte zuerst passende Updates für deinen Fachbereich.</p>
+        <section id="apotheken-wien" className="rounded-3xl border border-amber-200 bg-gradient-to-r from-amber-50 via-white to-amber-50 p-6 md:p-8">
+          <h2 className="text-2xl font-bold text-slate-900">Apotheken in Wien finden</h2>
+          <p className="mt-2 text-sm text-slate-600">Suche nach Name oder Adresse und filtere nach Bezirk, um schnell die passende Apotheke zu finden.</p>
 
-          {alarmSuccess ? (
-            <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">
-              Du bist eingetragen. Wir informieren dich bei passenden Termin-Optionen.
-            </div>
-          ) : (
-            <form onSubmit={handleAlarmSubmit} className="mt-5 grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
+          <div className="mt-5 grid gap-3 lg:grid-cols-[1fr_1fr]">
+            <label className="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700">
+              <Search className="h-4 w-4 text-amber-600" />
+              <input
+                value={apothekeSearch}
+                onChange={(event) => setApothekeSearch(event.target.value)}
+                placeholder="Apothekenname oder Adresse"
+                className="w-full bg-transparent outline-none"
+              />
+            </label>
+            <label className="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700">
+              <MapPin className="h-4 w-4 text-amber-600" />
               <select
-                value={alarmCategory}
-                onChange={(event) => setAlarmCategory(event.target.value)}
-                className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                value={apothekeDistrict}
+                onChange={(event) => setApothekeDistrict(event.target.value)}
+                className="w-full bg-transparent outline-none"
               >
-                {availableCategories.map((item) => (
+                {apothekeDistrictOptions.map((item) => (
                   <option key={item} value={item}>{item}</option>
                 ))}
               </select>
-              <input
-                required
-                type="email"
-                value={alarmEmail}
-                onChange={(event) => setAlarmEmail(event.target.value)}
-                placeholder="deinename@email.at"
-                className="rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-sky-300 focus:ring"
-              />
-              <button
-                type="submit"
-                disabled={alarmSubmitting}
-                className="rounded-xl bg-amber-500 px-5 py-2 text-sm font-bold text-white transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                {alarmSubmitting ? "Wird gespeichert..." : "Termin-Alarm aktivieren"}
-              </button>
-            </form>
-          )}
+            </label>
+          </div>
 
-          {alarmError ? <p className="mt-3 text-sm font-medium text-rose-700">{alarmError}</p> : null}
+          <p className="mt-3 text-xs font-medium text-slate-600">{filteredApotheken.length} Ergebnisse</p>
+
+          {filteredApotheken.length > 0 ? (
+            <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {filteredApotheken.map((apotheke) => (
+                <article key={apotheke.id} className="rounded-xl border border-amber-200 bg-white p-3">
+                  <p className="text-sm font-semibold text-slate-900">{apotheke.name}</p>
+                  <p className="mt-1 text-xs text-slate-600">{apotheke.district} · {apotheke.address}</p>
+                  {apotheke.phone ? <p className="mt-1 text-xs font-semibold text-slate-700">Tel: {apotheke.phone}</p> : null}
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {apotheke.phone ? (
+                      <a
+                        href={`tel:${apotheke.phone.replace(/[^+\d]/g, "")}`}
+                        className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        Anrufen
+                      </a>
+                    ) : null}
+                    <a
+                      href={getMapsUrl(apotheke)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                      Route
+                    </a>
+                    {apotheke.website ? (
+                      <a
+                        href={apotheke.website}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="rounded-lg bg-amber-500 px-2.5 py-1 text-xs font-semibold text-white hover:bg-amber-400"
+                      >
+                        Website
+                      </a>
+                    ) : null}
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-slate-600">Keine Apotheke für diese Suche gefunden.</p>
+          )}
         </section>
 
         <section className="rounded-3xl border border-sky-200 bg-sky-50 p-6 md:p-8">
@@ -522,7 +968,7 @@ export function LandingPage({
           </p>
           <div className="mt-4 flex flex-wrap gap-3">
             <Link
-              href="/kontakt?intent=claim"
+              href="/arztbereich"
               className="rounded-xl bg-sky-600 px-5 py-2 text-sm font-bold text-white transition hover:bg-sky-500"
             >
               Profil kostenlos beanspruchen

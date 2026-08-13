@@ -1,7 +1,7 @@
 # TerminBoerse.at - DEV HANDOFF (Mola Sonrasi Buradan Devam)
 
-Son guncelleme: 2026-08-08
-Durum: Aktif, production canli
+Son guncelleme: 2026-08-11
+Durum: Aktif, production canli (latest legal+seo+landing updates deploy edildi)
 
 ## 1) Proje Ozeti
 - Proje: TerminBoerse.at
@@ -186,3 +186,210 @@ Not:
 
 ## 16) Son Session Delta (2026-08-08)
 - Commit: 0280cd5 -> Arztbereich tabli Phase-1 uygulandi (Profil/Randevu/Anfragen)
+
+## 17) Son Session Delta (2026-08-09)
+- Arztbereich gecici olarak devre disi tutuldu (navbar inaktif + /arztbereich bilgilendirme sayfasi)
+- Supabase migration hazirligi baslatildi:
+   - Supabase dependency eklendi: @supabase/supabase-js
+   - Server admin client helper eklendi: lib/supabaseAdmin.ts
+   - SQL schema eklendi: supabase/migrations/20260809_arztbereich_init.sql
+   - Step2 SQL eklendi: supabase/migrations/20260809_arztbereich_step2.sql
+   - Env template eklendi: .env.supabase.example
+   - Uygulama adimlari dokumani eklendi: SUPABASE_NEXT_STEPS.md
+
+## 18) Son Session Delta (2026-08-10) - Arztbereich Kalender / Terminboard Krizi
+- Problem (kullanici bildirimi):
+   - Google baglantisi yapildiktan sonra dashboard geri donuyor ancak `Termine > Terminboard` hala `deaktiviert` kaliyor.
+   - Bazi akislarda sistem tekrar takvim mail/ID girmeyi istiyor gibi davraniyor.
+
+- Bu session'da yapilan teknik degisiklikler:
+   - OAuth callback doctor context iyilestirmesi:
+      - Redirect su an `doctorId` query ile donuyor.
+      - Dosya: app/api/arztbereich/google-calendar/callback/route.ts
+   - Dashboard doctor restore:
+      - Query'den gelen `doctorId` secime uygulanip URL temizleniyor.
+      - Dosya: components/arztbereich/ArztDashboardLite.tsx
+   - Scheduling status hesaplama iyilestirmesi:
+      - `not_onboarded` branch'inde de mevcut sakli alanlar (calendarConnected/calendarId/schedulingEnabled) korunuyor.
+      - Dosya: lib/doctorSchedulingStatus.ts
+   - 5 dk otomatik slot refresh:
+      - Kullanici sayfada kaldigi surece Termine tabinda 5 dk'da bir slot reload.
+      - Dosya: components/arztbereich/ArztDashboardLite.tsx
+   - Secili doktor persistence (reload sonrasi kaybolmamasi icin):
+      - localStorage uzerinden selected doctor geri yukleniyor.
+      - Dosya: components/arztbereich/ArztDashboardLite.tsx
+
+## 19) Son Session Delta (2026-08-10) - Manual Slot MVP (Google Sync Deaktiv)
+- Google Calendar entegrasyonu silinmedi; panelde ayri sekme olarak pasif/"deaktiv" tutuldu.
+- Termine paneli, doktorun manuel "bos slot" (tarih+saat+dakika) girmesi modeline cekildi.
+- 3 gun kurali eklendi: sadece sonraki 72 saat icindeki slotlar kaydedilebilir.
+- Yeni API: app/api/arztbereich/manual-slots/route.ts
+   - GET: token+doctorId ile doktorun slotlarini listeler
+   - POST: yeni manuel slot olusturur
+   - DELETE: slot siler
+- Yeni store/service: lib/manualDoctorSlots.ts
+   - Supabase table `arzt_manual_slots` uzerinden kalici kayit
+   - Slot cakisma kontrolu + 3 gun validasyonu
+- Yeni migration: supabase/migrations/20260810_manual_slots.sql
+- Public slot feed manual sisteme baglandi:
+   - lib/googleCalendarAvailability.ts artik manuel slot listesini donuyor
+   - app/api/doctors/[id]/slots route bu feed'i kullanmaya devam ediyor
+- Booking gate guncellendi:
+   - lib/doctorSchedulingStatus.ts icinde online booking artik calendar baglantisina degil `profileUpdated + schedulingEnabled` durumuna bagli
+- Hasta tarafi gorunurluk:
+   - Doktor detayinda slotlar manuel kayitlardan geliyor (app/arzt/[id]/page.tsx)
+   - Arama kartlarindaki "Nächster Slot" alani manuel slotlardan besleniyor (app/api/doctors/route.ts)
+
+## 20) Son Session Delta (2026-08-10) - Slot Booking + 3-Gun Filter
+- Hasta tarafinda slot-secimli randevu talebi eklendi:
+   - Modal icinde opsiyonel serbest slot secimi (components/arzt/AppointmentRequestModal.tsx)
+   - Secili slot varsa once atomik rezervasyon yapiliyor, sonra lead mail gonderiliyor
+- Public slot API'ye booking endpoint eklendi:
+   - POST /api/doctors/[id]/slots -> slotId ile `free -> booked`
+   - Dosya: app/api/doctors/[id]/slots/route.ts
+- Slot rezervasyon atomigi store katmanina eklendi:
+   - reserveManualDoctorSlot() (Supabase + memory fallback)
+   - Dosya: lib/manualDoctorSlots.ts
+- Lead email icerigine secilen slot saat araligi eklendi:
+   - Dosya: app/api/lead/route.ts
+- Arzt panelinde Termine board icin hizli gun filtresi eklendi:
+   - Alle / Heute / Morgen / Übermorgen
+   - Dosya: components/arztbereich/ArztDashboardLite.tsx
+   - KV yoksa Supabase fallback persistence:
+      - Scheduling store + Google connection store'a Supabase fallback eklendi.
+      - Dosyalar: lib/arztbereichSchedulingStore.ts, lib/googleCalendarConnectionStore.ts
+
+## 21) Son Session Delta (2026-08-11) - Profil/Community Cleanup + 3-Gun Slot Vitrini + Deploy
+- Kullanici istek listesine gore profile/community cleanup tamamlandi:
+   - Uydurma rating/yorum gorunumleri kaldirildi (card + profil odakli sade gosterim).
+   - Doktor detailde `Aktuell ausgebucht` metni kaldirildi.
+   - Doktor email varsa detail sayfasina direkt `mailto:` tabanli `Direkt fragen` CTA eklendi.
+- Arztbereich profile UX sadeleştirildi:
+   - Ust durum stripi kaldirildi.
+   - Doktor rolunde `Termine` tab'i kaldirildi.
+   - Profilübersicht altina bugun/yarin/obur gun icin hizli slot ekleme alani eklendi.
+- 3 gun slotlarin public gorunurlugu tamamlandi:
+   - Yeni feed API: app/api/doctors/upcoming-slots/route.ts
+   - Store helper genisletmesi: lib/manualDoctorSlots.ts (`getUpcomingManualSlotsByDoctorIds`)
+   - Landing section eklendi: components/landing/LandingPage.tsx
+      - Baslik: `Freie Termine in den nächsten 3 Tagen`
+      - Doktor bazli 3 slot chip'i + profil linki
+- Build dogrulama:
+   - `npm run build` basarili (Next.js 16.3.0, tum route'lar derlendi).
+- Production deploy:
+   - Deployment: https://terminboerse-2n2mrncfa-ilhanyalcin3307s-projects.vercel.app
+   - Alias: https://www.terminboerse.at
+
+## 22) Kalan Onerilen Minik Kontrol Listesi
+1. Canlida `/` ana sayfada `Freie Termine in den nächsten 3 Tagen` bolumunu dogrula.
+2. Canlida `/arzt/[slug]` detailde `Direkt fragen` butonunu (email olan doktorda) dogrula.
+3. Arztbereich profilde yeni 3-gun slot panelinden slot ekle/sil akisini smoke-test et.
+
+## 23) Son Session Delta (2026-08-11) - SEO + AI Discovery + Sitemap Refresh
+- Global metadata (title/description/keywords/OG/Twitter) guncellendi:
+   - Dosya: app/layout.tsx
+   - Odak: Arzttermine Wien + 3-gun slotlar + Apotheke arama + Arztbereich
+- Homepage schema/FAQ metinleri guncellendi:
+   - Dosya: app/page.tsx
+   - Eski Termin-Alarm ifadesi kaldirildi, Apotheke arama uyumu eklendi
+- Footer SEO/discovery linkleri genisletildi:
+   - Dosya: components/layout/SiteShell.tsx
+   - Yeni linkler: Arzttermine Wien, Apotheken Wien (anchor), Arztbereich
+- Homepage Apotheke bolumune anchor eklendi:
+   - Dosya: components/landing/LandingPage.tsx
+   - Anchor: `#apotheken-wien`
+- AI/crawler discovery dosyalari eklendi:
+   - robots.txt route: app/robots.ts
+   - llms.txt route: app/llms.txt/route.ts
+- Sitemap kapsamı guncellendi:
+   - Dosya: app/sitemap.ts
+   - Eklendi: /arztbereich, /login, /profil
+- Production deploy:
+   - Deployment: https://terminboerse-cnc0i907m-ilhanyalcin3307s-projects.vercel.app
+   - Alias: https://www.terminboerse.at
+
+## 24) Son Session Delta (2026-08-11) - Landing, Auth UI ve Yasal Sayfalar Finalizasyonu
+- Landing ana sayfa UX/content guncellemeleri:
+   - `Freie Termine in den nächsten 3 Tagen` bolumu eski Storno-Ticker konumuna alindi ve ayni yesil kart diline cekildi.
+   - `Kein passender Termin frei?`/Termin-Alarm bolumu kaldirildi; yerine OGD tabanli Apotheke arama bolumu eklendi.
+   - Yeni data kaynagi: `data/APOTHEKEOGD.json` (name/adres arama + bezirk filtresi + Anrufen/Route/Website aksiyonlari).
+   - `Profil kostenlos beanspruchen` CTA linki `/arztbereich` olarak degistirildi.
+- Login/Arztbereich giris UI sadeleştirme:
+   - User login sayfasinda Google ile devam butonlari kaldirildi.
+   - Arztbereich login/register ekranindaki `Mit Google` ve `Registrierung mit Google` butonlari kaldirildi.
+   - Header'daki Login butonu tekrar aktif hale getirildi (guest -> `/login`).
+- SEO/AI discovery son durum:
+   - Metadata + schema mevcut urun kapsamina göre guncellendi.
+   - `robots.txt` ve `llms.txt` endpointleri canli.
+   - Sitemap `/arztbereich`, `/login`, `/profil` ile guncel.
+- Impressum ve Datenschutz tamamen revize edildi:
+   - Gercek iletisim bilgileri eklendi:
+      - Ilhan Yalcin
+      - Kiningergasse, 1120 Wien
+      - kontakt@terminboerse.at
+      - 004369919050017
+   - Non-commercial/public-benefit pozisyonlama aciklandi.
+   - data.gv.at / OGD veri kaynagi, sorumluluk sinirlari ve DSGVO haklari netlestirildi.
+   - Acil durumda 144 notu eklendi.
+- Son production deploy (en guncel):
+   - https://terminboerse-bdfhpwnv3-ilhanyalcin3307s-projects.vercel.app
+   - Alias: https://www.terminboerse.at
+
+## 25) Devam Icin Net Baslangic Noktasi
+1. Search Console'da sitemap yeniden gonderildi mi kontrol et (`/sitemap.xml`).
+2. Homepage Apotheke arama bolumunde performans/artirma gereksinimi var mi degerlendir (gerekirse API route'a tasima).
+3. Hukuki metinler avukat review'e gidecekse son metin freeze etmeden once adres/isim yazimini tekrar teyit et.
+      - Migration: supabase/migrations/20260810_calendar_persistence.sql
+   - Env/secret robustness:
+      - Supabase/KV env degerleri trimleniyor.
+      - Token crypto decrypt tarafi eski/yeni secret formatlari ile geriye donuk calisacak sekilde sertlestirildi.
+      - Dosyalar: lib/supabaseAdmin.ts, lib/secureTokenCrypto.ts, ilgili store dosyalari
+   - Missing refresh token toleransi:
+      - OAuth callback refresh token gelmezse baglanti tamamen dusurulmuyor.
+      - Connection store sentinel yaklasimi ile DB uyumlulugu saglandi.
+      - Dosyalar: app/api/arztbereich/google-calendar/callback/route.ts, lib/googleCalendarConnectionStore.ts, lib/googleCalendarAvailability.ts, lib/googleCalendarEvents.ts
+   - Kalender input UX iyilestirmesi:
+      - Termine Einstellungen'da email/kalender-id tekrar tekrar zorunlu yazdirma azaltildi (doctor bazli local persistence + fallback prefill).
+      - Dosya: components/arztbereich/ArztDashboardLite.tsx
+   - Terminboard gate auto-heal denemesi:
+      - `calendarConnected` varsa board'u acmaya yardimci mantik + `schedulingEnabled` auto-heal effect eklendi.
+      - Dosya: components/arztbereich/ArztDashboardLite.tsx
+
+- Runtime dogrulama notlari (onemli):
+   - Production env'lerde kritik bos degerler vardi; session icinde panodan tekrar girilerek dolduruldu:
+      - NEXT_PUBLIC_SUPABASE_URL
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY
+      - SUPABASE_SERVICE_ROLE_KEY
+      - GOOGLE_OAUTH_CLIENT_SECRET
+   - Son kontrol: bu 4 deger non-empty ve newline'siz gorundu.
+   - Supabase tablo varlik kontrolu:
+      - arzt_accounts: OK
+      - arzt_account_doctors: OK
+      - arzt_scheduling_status: OK (count 0)
+      - arzt_google_calendar_connections: OK (count 0)
+
+- Mevcut durum (session kapanis anindaki gercek):
+   - Kullaniciya gore Terminboard hala deaktiviert gorunuyor.
+   - Yani issue production'da hala tam kapanmamis; bir sonraki adimda live diagnostics zorunlu.
+
+- Sonraki oturumda ilk yapilacaklar (sira ile):
+1. `components/arztbereich/ArztDashboardLite.tsx` icine gecici ama net bir debug panel ekle (yalnizca admin/doctor panelde gorunsun):
+    - selectedDoctorId
+    - schedulingStatus.doctorId
+    - schedulingStatus.calendarConnected
+    - schedulingStatus.schedulingEnabled
+    - schedulingStatus.reason
+    - calendarHealth.googleEmail / accessTokenState
+2. `/api/arztbereich/scheduling-status` response'una debug alanlari ekle:
+    - storagePath: `kv|supabase|memory`
+    - foundSchedulingEntry: boolean
+    - foundGoogleConnection: boolean
+    - resolvedDoctorId
+3. Connect callback sonrasinda ayni doctorId icin write-read smoke log ekle:
+    - upsert sonra immediate read back ve fark varsa explicit error log.
+4. Gating'i nihai olarak tek kaynaga bagla:
+    - `isTermineEnabled` icin final karar mantigi netlestir (server status + fallback) ve UI/checkbox tutarliligini sabitle.
+
+- Not:
+   - Kullanici ara verdi; geri donuste ilk hedef sadece bu bug'i kapatmak.
+   - Yeni ozellik yok, sadece runtime truth ile sorunu bitirme odagi.

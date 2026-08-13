@@ -10,13 +10,33 @@ type AppointmentRequestModalProps = {
   source: "arzt-card" | "arzt-detail";
   triggerLabel?: string;
   triggerClassName?: string;
+  availableSlots?: Array<{ id?: string; start: string; end: string }>;
 };
+
+function formatSlotLabel(start: string, end: string) {
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    return "Ungültiger Slot";
+  }
+
+  const day = new Intl.DateTimeFormat("de-AT", {
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+  }).format(startDate);
+
+  const startTime = new Intl.DateTimeFormat("de-AT", { hour: "2-digit", minute: "2-digit" }).format(startDate);
+  const endTime = new Intl.DateTimeFormat("de-AT", { hour: "2-digit", minute: "2-digit" }).format(endDate);
+  return `${day} · ${startTime} - ${endTime}`;
+}
 
 export function AppointmentRequestModal({
   doctor,
   source,
   triggerLabel = "Termin anfragen",
   triggerClassName,
+  availableSlots = [],
 }: AppointmentRequestModalProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -26,11 +46,17 @@ export function AppointmentRequestModal({
   const [patientEmail, setPatientEmail] = useState("");
   const [patientPhone, setPatientPhone] = useState("");
   const [note, setNote] = useState("");
+  const [selectedSlotId, setSelectedSlotId] = useState("");
+  const [slots, setSlots] = useState<Array<{ id?: string; start: string; end: string }>>(availableSlots);
+
+  const selectedSlot = slots.find((slot) => slot.id === selectedSlotId);
 
   function openModal() {
     setIsOpen(true);
     setIsSuccess(false);
     setError("");
+    setSlots(availableSlots);
+    setSelectedSlotId("");
     trackEvent("cta_clicked", {
       source,
       doctor_id: doctor.id,
@@ -59,9 +85,25 @@ export function AppointmentRequestModal({
       patientEmail: patientEmail.trim(),
       patientPhone: patientPhone.trim(),
       note: note.trim(),
+      slotId: selectedSlot?.id,
+      slotStart: selectedSlot?.start,
+      slotEnd: selectedSlot?.end,
     };
 
     try {
+      if (selectedSlot?.id) {
+        const reserveResponse = await fetch(`/api/doctors/${encodeURIComponent(doctor.id)}/slots`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slotId: selectedSlot.id }),
+        });
+
+        if (!reserveResponse.ok) {
+          const reservePayload = (await reserveResponse.json().catch(() => ({}))) as { error?: string };
+          throw new Error(reservePayload.error ?? "Der ausgewählte Slot ist nicht mehr verfügbar.");
+        }
+      }
+
       const response = await fetch("/api/lead", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -91,9 +133,13 @@ export function AppointmentRequestModal({
       setPatientEmail("");
       setPatientPhone("");
       setNote("");
+      if (selectedSlot?.id) {
+        setSlots((prev) => prev.filter((slot) => slot.id !== selectedSlot.id));
+      }
+      setSelectedSlotId("");
     } catch (submitError) {
       console.error("Termin-Anfrage konnte nicht gesendet werden", submitError);
-      setError("Die Anfrage konnte gerade nicht gesendet werden. Bitte versuche es erneut.");
+      setError(submitError instanceof Error ? submitError.message : "Die Anfrage konnte gerade nicht gesendet werden. Bitte versuche es erneut.");
     } finally {
       setIsSubmitting(false);
     }
@@ -182,6 +228,28 @@ export function AppointmentRequestModal({
                     </div>
                   </label>
                 </div>
+
+                <label className="block text-sm">
+                  <span className="mb-1 block text-slate-600">Freier Slot (optional)</span>
+                  {slots.length > 0 ? (
+                    <select
+                      value={selectedSlotId}
+                      onChange={(event) => setSelectedSlotId(event.target.value)}
+                      className="w-full rounded-xl border border-slate-300 px-3 py-2"
+                    >
+                      <option value="">Bitte Zeitpunkt wählen</option>
+                      {slots
+                        .filter((slot) => Boolean(slot.id))
+                        .map((slot) => (
+                          <option key={slot.id} value={slot.id}>
+                            {formatSlotLabel(slot.start, slot.end)}
+                          </option>
+                        ))}
+                    </select>
+                  ) : (
+                    <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">Aktuell keine freien Slots verfügbar.</p>
+                  )}
+                </label>
 
                 <label className="block text-sm">
                   <span className="mb-1 block text-slate-600">Notiz</span>

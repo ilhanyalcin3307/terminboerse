@@ -16,9 +16,9 @@ const sora = Sora({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.terminboerse.at"),
-  title: "Arzttermin Wien: Kurzfristige Termine heute | Terminbörse.at",
+  title: "Arzttermin Wien, freie Slots & Apotheken | Terminbörse.at",
   description:
-    "Finde kurzfristige Arzttermine in Wien. Suche nach Fachbereich und Bezirk, entdecke freie Optionen und frage direkt Termine an.",
+    "Finde kurzfristige Arzttermine in Wien, prüfe freie 3-Tage-Slots und suche Apotheken nach Bezirk. Für Ärztinnen und Ärzte: Profil verwalten und freie Zeiten sichtbar machen.",
   alternates: {
     canonical: "/",
   },
@@ -26,15 +26,18 @@ export const metadata: Metadata = {
     "Arzttermin Wien",
     "kurzfristiger Arzttermin",
     "freie Arzttermine Wien",
+    "Apotheken Wien",
+    "Arztbereich Wien",
+    "freie 3-Tage-Slots",
     "Facharzt Wien",
     "Zahnarzt Wien",
     "Orthopädie Wien",
     "Terminbörse",
   ],
   openGraph: {
-    title: "Arzttermin Wien: Kurzfristige Termine heute | Terminbörse.at",
+    title: "Arzttermin Wien, freie Slots & Apotheken | Terminbörse.at",
     description:
-      "Finde kurzfristige Arzttermine in Wien. Suche nach Fachbereich und Bezirk, entdecke freie Optionen und frage direkt Termine an.",
+      "Finde kurzfristige Arzttermine in Wien, prüfe freie 3-Tage-Slots und suche Apotheken nach Bezirk.",
     url: "https://www.terminboerse.at",
     siteName: "Terminbörse.at",
     locale: "de_AT",
@@ -42,9 +45,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Arzttermin Wien: Kurzfristige Termine heute | Terminbörse.at",
+    title: "Arzttermin Wien, freie Slots & Apotheken | Terminbörse.at",
     description:
-      "Finde kurzfristige Arzttermine in Wien. Suche nach Fachbereich und Bezirk, entdecke freie Optionen und frage direkt Termine an.",
+      "Finde kurzfristige Arzttermine in Wien, prüfe freie 3-Tage-Slots und suche Apotheken nach Bezirk.",
   },
   verification: {
     google: "vrWQo-G7ko2w-_8-4LOGewb4h2e7890ZeETG8HaGYzw",

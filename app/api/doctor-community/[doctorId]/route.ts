@@ -25,9 +25,11 @@ export async function GET(_: Request, context: RouteContext) {
     return NextResponse.json({ ok: false, error: "Doctor not found" }, { status: 404 });
   }
 
+  const snapshot = await getDoctorCommunitySnapshot(doctor.id);
+
   return NextResponse.json({
     ok: true,
-    snapshot: getDoctorCommunitySnapshot(doctor.id),
+    snapshot,
   });
 }
 
@@ -47,11 +49,13 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   if (body.event === "view") {
-    trackDoctorProfileView(doctor.id);
+    await trackDoctorProfileView(doctor.id);
   }
+
+  const snapshot = await getDoctorCommunitySnapshot(doctor.id);
 
   return NextResponse.json({
     ok: true,
-    snapshot: getDoctorCommunitySnapshot(doctor.id),
+    snapshot,
   });
 }

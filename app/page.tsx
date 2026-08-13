@@ -24,10 +24,10 @@ const faqSchema = {
     },
     {
       "@type": "Question",
-      name: "Wie funktioniert der Termin-Alarm?",
+      name: "Kann ich auf Terminbörse.at auch Apotheken in Wien suchen?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "Du hinterlegst E-Mail und gewünschten Fachbereich. Sobald passende Optionen verfügbar sind, informieren wir dich zuerst.",
+        text: "Ja. Auf der Startseite gibt es eine Apotheke-Suche mit Name/Adresse und Bezirksfilter für Wien.",
       },
     },
     {
@@ -66,7 +66,7 @@ const websiteSchema = {
 const webpageSchema = {
   "@context": "https://schema.org",
   "@type": "WebPage",
-  name: "Arzttermin Wien: Kurzfristige Termine heute | Terminbörse.at",
+  name: "Arzttermin Wien, freie Slots & Apotheken | Terminbörse.at",
   url: "https://www.terminboerse.at/",
   inLanguage: "de-AT",
   isPartOf: {
@@ -76,7 +76,7 @@ const webpageSchema = {
   },
   about: {
     "@type": "MedicalOrganization",
-    name: "Arzttermine in Wien",
+    name: "Arzttermine und Apotheken in Wien",
     areaServed: "Wien",
   },
 };

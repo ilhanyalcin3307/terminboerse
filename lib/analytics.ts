@@ -21,13 +21,25 @@ declare global {
   }
 }
 
+function createTrackingId() {
+  if (typeof globalThis.crypto !== "undefined" && typeof globalThis.crypto.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return `evt-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export function prependLocalStorageItem(key: string, value: unknown) {
   if (typeof window === "undefined") {
     return;
   }
 
-  const previous = readLocalStorageArray<unknown>(key);
-  localStorage.setItem(key, JSON.stringify([value, ...previous]));
+  try {
+    const previous = readLocalStorageArray<unknown>(key);
+    localStorage.setItem(key, JSON.stringify([value, ...previous]));
+  } catch {
+    // Ignore analytics storage errors (Safari private mode, quota limits, etc.)
+  }
 }
 
 export function readLocalStorageArray<T>(key: string): T[] {
@@ -52,18 +64,22 @@ export function trackEvent(eventName: TrackEventName, payload: TrackPayload) {
     return;
   }
 
-  const event: StoredEvent = {
-    id: crypto.randomUUID(),
-    eventName,
-    payload,
-    createdAt: new Date().toISOString(),
-  };
+  try {
+    const event: StoredEvent = {
+      id: createTrackingId(),
+      eventName,
+      payload,
+      createdAt: new Date().toISOString(),
+    };
 
-  prependLocalStorageItem("terminboerse_events", event);
+    prependLocalStorageItem("terminboerse_events", event);
 
-  if (typeof window.gtag === "function") {
-    window.gtag("event", eventName, payload);
+    if (typeof window.gtag === "function") {
+      window.gtag("event", eventName, payload);
+    }
+
+    console.log("[tracking]", eventName, payload);
+  } catch {
+    // Ignore all tracking failures to keep UX stable.
   }
-
-  console.log("[tracking]", eventName, payload);
 }

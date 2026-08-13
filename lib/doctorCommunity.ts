@@ -9,34 +9,27 @@ export type DoctorCommunitySnapshot = {
   doctorId: string;
   averageRating: number;
   ratingsCount: number;
+  commentsCount: number;
   viewsCount: number;
   lastComments: DoctorComment[];
   canRate: boolean;
 };
 
-const viewCounters = new Map<string, number>();
+type DoctorViewCountersEntry = {
+  doctorId: string;
+  profileViews: number;
+  listImpressions: number;
+  updatedAt: string;
+};
 
-const COMMENT_POOL = [
-  "Sehr freundliches Team und strukturierter Ablauf.",
-  "Ich habe schnell einen Termin bekommen und wurde gut informiert.",
-  "Praxis gut erreichbar, Termin lief ohne lange Wartezeit.",
-  "Klare Kommunikation und angenehme Betreuung vor Ort.",
-  "Ordination wirkte organisiert, ich habe mich gut aufgehoben gefühlt.",
-  "Ruhige Atmosphäre und professionelle Beratung.",
-  "Der Ablauf war effizient und transparent erklärt.",
-  "Gute Erreichbarkeit und hilfreiche Rückmeldung auf meine Anfrage.",
-];
+type DoctorViewCountersState = {
+  entries: DoctorViewCountersEntry[];
+};
 
-const AUTHOR_POOL = [
-  "Patient A.",
-  "Patientin M.",
-  "Besucher K.",
-  "Patient P.",
-  "Patientin S.",
-  "Besucherin L.",
-  "Patient R.",
-  "Patientin T.",
-];
+const STORE_KEY = "terminboerse:doctor-community:views:v1";
+const DEFAULT_VIEW_STATE: DoctorViewCountersState = { entries: [] };
+
+let inMemoryViewState: DoctorViewCountersState = { ...DEFAULT_VIEW_STATE };
 
 function hashString(value: string) {
   let hash = 2166136261;
@@ -49,49 +42,210 @@ function hashString(value: string) {
 
 function getSeededBaseMetrics(doctorId: string) {
   const seed = hashString(doctorId);
-  const ratingsCount = 12 + (seed % 89);
-  const ratingRaw = 3.9 + ((seed % 12) / 20);
-  const averageRating = Math.min(4.8, Number(ratingRaw.toFixed(1)));
-  const viewsCount = 180 + (seed % 2600);
-  return { ratingsCount, averageRating, viewsCount, seed };
+  return { ratingsCount: 0, commentsCount: 0, averageRating: 0, seed };
 }
 
-function getSeededComments(doctorId: string): DoctorComment[] {
-  const { seed } = getSeededBaseMetrics(doctorId);
-  const comments: DoctorComment[] = [];
+function getKvConfig() {
+  const url = process.env.KV_REST_API_URL;
+  const token = process.env.KV_REST_API_TOKEN;
+  if (!url || !token) {
+    return null;
+  }
+  return { url, token };
+}
 
-  for (let index = 0; index < 3; index += 1) {
-    const commentIndex = (seed + index * 3) % COMMENT_POOL.length;
-    const authorIndex = (seed + index * 5) % AUTHOR_POOL.length;
-    const daysAgo = 4 + ((seed + index * 11) % 75);
-    const createdAt = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000).toISOString();
-
-    comments.push({
-      id: `${doctorId}-comment-${index + 1}`,
-      author: AUTHOR_POOL[authorIndex],
-      message: COMMENT_POOL[commentIndex],
-      createdAt,
-    });
+async function runKvCommand(command: unknown[]) {
+  const config = getKvConfig();
+  if (!config) {
+    return null;
   }
 
-  return comments;
+  const response = await fetch(config.url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(command),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(`KV command failed: ${response.status}`);
+  }
+
+  return (await response.json()) as { result?: unknown };
 }
 
-export function trackDoctorProfileView(doctorId: string) {
-  const current = viewCounters.get(doctorId) ?? 0;
-  viewCounters.set(doctorId, current + 1);
+function normalizeViewState(raw: unknown): DoctorViewCountersState {
+  if (!raw || typeof raw !== "object") {
+    return { ...DEFAULT_VIEW_STATE };
+  }
+
+  const input = raw as Partial<DoctorViewCountersState>;
+  return {
+    entries: Array.isArray(input.entries) ? input.entries : [],
+  };
 }
 
-export function getDoctorCommunitySnapshot(doctorId: string): DoctorCommunitySnapshot {
+async function loadViewState(): Promise<DoctorViewCountersState> {
+  const config = getKvConfig();
+  if (!config) {
+    return inMemoryViewState;
+  }
+
+  try {
+    const payload = await runKvCommand(["GET", STORE_KEY]);
+    const rawValue = payload?.result;
+    if (typeof rawValue !== "string" || rawValue.trim() === "") {
+      return { ...DEFAULT_VIEW_STATE };
+    }
+
+    const parsed = JSON.parse(rawValue) as unknown;
+    return normalizeViewState(parsed);
+  } catch {
+    return { ...DEFAULT_VIEW_STATE };
+  }
+}
+
+async function saveViewState(nextState: DoctorViewCountersState) {
+  const config = getKvConfig();
+  if (!config) {
+    inMemoryViewState = nextState;
+    return;
+  }
+
+  await runKvCommand(["SET", STORE_KEY, JSON.stringify(nextState)]);
+}
+
+function normalizeCount(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return 0;
+  }
+  return Math.floor(value);
+}
+
+function getEntryByDoctorId(state: DoctorViewCountersState, doctorId: string): DoctorViewCountersEntry | null {
+  const normalizedDoctorId = doctorId.trim();
+  if (!normalizedDoctorId) {
+    return null;
+  }
+
+  const entry = state.entries.find((item) => item.doctorId === normalizedDoctorId);
+  if (!entry) {
+    return null;
+  }
+
+  return {
+    doctorId: normalizedDoctorId,
+    profileViews: normalizeCount(entry.profileViews),
+    listImpressions: normalizeCount(entry.listImpressions),
+    updatedAt: typeof entry.updatedAt === "string" && entry.updatedAt ? entry.updatedAt : new Date(0).toISOString(),
+  };
+}
+
+async function bumpViewCounters(doctorId: string, patch: { profileViewsDelta?: number; listImpressionsDelta?: number }) {
+  const normalizedDoctorId = doctorId.trim();
+  if (!normalizedDoctorId) {
+    return;
+  }
+
+  const profileViewsDelta = normalizeCount(patch.profileViewsDelta);
+  const listImpressionsDelta = normalizeCount(patch.listImpressionsDelta);
+  if (profileViewsDelta === 0 && listImpressionsDelta === 0) {
+    return;
+  }
+
+  const state = await loadViewState();
+  const index = state.entries.findIndex((item) => item.doctorId === normalizedDoctorId);
+  const current =
+    index >= 0
+      ? getEntryByDoctorId(state, normalizedDoctorId)
+      : {
+          doctorId: normalizedDoctorId,
+          profileViews: 0,
+          listImpressions: 0,
+          updatedAt: new Date(0).toISOString(),
+        };
+
+  if (!current) {
+    return;
+  }
+
+  const nextEntry: DoctorViewCountersEntry = {
+    doctorId: normalizedDoctorId,
+    profileViews: current.profileViews + profileViewsDelta,
+    listImpressions: current.listImpressions + listImpressionsDelta,
+    updatedAt: new Date().toISOString(),
+  };
+
+  if (index >= 0) {
+    state.entries[index] = nextEntry;
+  } else {
+    state.entries.push(nextEntry);
+  }
+
+  await saveViewState(state);
+}
+
+function getSeededComments(): DoctorComment[] {
+  return [];
+}
+
+export async function trackDoctorProfileView(doctorId: string) {
+  await bumpViewCounters(doctorId, { profileViewsDelta: 1 });
+}
+
+export async function trackDoctorListImpressions(doctorIds: string[]) {
+  const seen = new Set<string>();
+
+  for (const rawDoctorId of doctorIds) {
+    const doctorId = rawDoctorId.trim();
+    if (!doctorId || seen.has(doctorId)) {
+      continue;
+    }
+    seen.add(doctorId);
+    await bumpViewCounters(doctorId, { listImpressionsDelta: 1 });
+  }
+}
+
+export async function getDoctorCommunitySnapshot(doctorId: string): Promise<DoctorCommunitySnapshot> {
   const base = getSeededBaseMetrics(doctorId);
-  const trackedViews = viewCounters.get(doctorId) ?? 0;
+  const state = await loadViewState();
+  const counters = getEntryByDoctorId(state, doctorId);
+  const profileViews = counters?.profileViews ?? 0;
+  const listImpressions = counters?.listImpressions ?? 0;
 
   return {
     doctorId,
     averageRating: base.averageRating,
     ratingsCount: base.ratingsCount,
-    viewsCount: base.viewsCount + trackedViews,
-    lastComments: getSeededComments(doctorId),
+    commentsCount: base.commentsCount,
+    viewsCount: profileViews + listImpressions,
+    lastComments: getSeededComments(),
     canRate: false,
   };
+}
+
+export async function getDoctorCommunityPreviews(doctorIds: string[]) {
+  return Promise.all(doctorIds.map(async (doctorId) => {
+    const snapshot = await getDoctorCommunitySnapshot(doctorId);
+    return {
+      doctorId,
+      averageRating: snapshot.averageRating,
+      ratingsCount: snapshot.ratingsCount,
+      commentsCount: snapshot.commentsCount,
+      viewsCount: snapshot.viewsCount,
+    };
+  }));
+}
+
+export async function getTopViewedDoctorIds(limit: number) {
+  const state = await loadViewState();
+
+  return state.entries
+    .map((entry) => ({ doctorId: entry.doctorId, profileViews: normalizeCount(entry.profileViews) }))
+    .filter((entry) => entry.profileViews > 0)
+    .sort((a, b) => b.profileViews - a.profileViews)
+    .slice(0, limit);
 }

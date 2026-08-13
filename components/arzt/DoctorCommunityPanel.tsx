@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Eye, MessageSquareText, Star } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Eye, MessageSquareText } from "lucide-react";
 import { trackEvent } from "@/lib/analytics";
 
 type DoctorComment = {
@@ -15,6 +15,7 @@ type DoctorCommunitySnapshot = {
   doctorId: string;
   averageRating: number;
   ratingsCount: number;
+  commentsCount: number;
   viewsCount: number;
   lastComments: DoctorComment[];
   canRate: boolean;
@@ -24,18 +25,6 @@ type DoctorCommunityPanelProps = {
   doctorId: string;
   doctorName: string;
 };
-
-function formatDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "Unbekannt";
-  }
-  return new Intl.DateTimeFormat("de-AT", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }).format(date);
-}
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat("de-AT").format(value);
@@ -94,17 +83,10 @@ export function DoctorCommunityPanel({ doctorId, doctorName }: DoctorCommunityPa
     };
   }, [doctorId]);
 
-  const activeStars = useMemo(() => {
-    if (!snapshot) {
-      return 0;
-    }
-    return Math.round(snapshot.averageRating);
-  }, [snapshot]);
-
   return (
     <section className="rounded-[2rem] border border-amber-200 bg-amber-50 p-6 shadow-sm">
       <h3 className="text-lg font-bold text-slate-900">Bewertungen & Erfahrungen</h3>
-      <p className="mt-2 text-sm text-slate-700">Transparente Signale aus der Community rund um dieses Arztprofil.</p>
+      <p className="mt-2 text-sm text-slate-700">Live-Profilaufrufe sind aktiv. Bewertungen und Kommentare folgen als nächster Schritt.</p>
 
       {isLoading ? <p className="mt-4 text-sm text-slate-600">Bewertungen werden geladen...</p> : null}
       {error ? <p className="mt-4 text-sm font-medium text-rose-700">{error}</p> : null}
@@ -113,43 +95,27 @@ export function DoctorCommunityPanel({ doctorId, doctorName }: DoctorCommunityPa
         <>
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
             <article className="rounded-xl border border-amber-200 bg-white p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ø Bewertung</p>
-              <p className="mt-1 text-xl font-bold text-slate-900">{snapshot.averageRating.toFixed(1)} / 5</p>
-              <div className="mt-1 flex items-center gap-1 text-amber-500">
-                {Array.from({ length: 5 }).map((_, index) => (
-                  <Star key={index} className={`h-4 w-4 ${index < activeStars ? "fill-current" : "opacity-40"}`} />
-                ))}
-              </div>
-            </article>
-            <article className="rounded-xl border border-amber-200 bg-white p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Bewertungen</p>
-              <p className="mt-2 text-xl font-bold text-slate-900">{formatNumber(snapshot.ratingsCount)}</p>
-            </article>
-            <article className="rounded-xl border border-amber-200 bg-white p-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Profilaufrufe</p>
               <p className="mt-2 inline-flex items-center gap-1 text-xl font-bold text-slate-900">
                 <Eye className="h-4 w-4 text-amber-600" />
                 {formatNumber(snapshot.viewsCount)}
               </p>
             </article>
-          </div>
-
-          <div className="mt-5 space-y-3">
-            <p className="inline-flex items-center gap-2 text-sm font-semibold text-slate-800">
-              <MessageSquareText className="h-4 w-4 text-amber-600" />
-              Letzte 3 Kommentare
-            </p>
-            {snapshot.lastComments.map((comment) => (
-              <article key={comment.id} className="rounded-xl border border-amber-200 bg-white p-3">
-                <p className="text-sm text-slate-700">{comment.message}</p>
-                <p className="mt-2 text-xs text-slate-500">{comment.author} • {formatDate(comment.createdAt)}</p>
-              </article>
-            ))}
+            <article className="rounded-xl border border-amber-200 bg-white p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Bewertungen</p>
+              <p className="mt-2 text-xl font-bold text-slate-900">{formatNumber(snapshot.ratingsCount)}</p>
+              <p className="mt-1 text-xs text-slate-500">Noch keine Live-Bewertungen.</p>
+            </article>
+            <article className="rounded-xl border border-amber-200 bg-white p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Kommentare</p>
+              <p className="mt-2 text-xl font-bold text-slate-900">{formatNumber(snapshot.commentsCount)}</p>
+              <p className="mt-1 text-xs text-slate-500">Noch keine Live-Kommentare.</p>
+            </article>
           </div>
 
           <div className="mt-5 rounded-xl border border-dashed border-amber-300 bg-white p-4">
             <p className="text-sm font-semibold text-slate-800">{doctorName} bewerten oder kommentieren</p>
-            <p className="mt-1 text-sm text-slate-600">Diese Funktion wird nach Login per E-Mail freigeschaltet.</p>
+            <p className="mt-1 text-sm text-slate-600">Kommentarfunktion wird im nächsten Schritt freigeschaltet.</p>
             <div className="mt-3 flex flex-wrap gap-2">
               <button
                 disabled={!snapshot.canRate}

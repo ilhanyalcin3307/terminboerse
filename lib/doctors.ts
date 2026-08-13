@@ -11,6 +11,10 @@ export type DoctorRecord = {
   latitude?: number;
   longitude?: number;
   nextSlot?: string;
+  averageRating?: number;
+  ratingsCount?: number;
+  commentsCount?: number;
+  viewsCount?: number;
 };
 
 export type WorkingHoursEntry = {

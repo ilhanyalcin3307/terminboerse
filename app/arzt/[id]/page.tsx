@@ -5,6 +5,8 @@ import { CalendarClock, Globe, Mail, MapPin, PhoneCall, Route, ShieldCheck, Stet
 import doctorsJson from "@/data/doctors.json";
 import { AppointmentRequestModal } from "@/components/arzt/AppointmentRequestModal";
 import { DoctorCommunityPanel } from "@/components/arzt/DoctorCommunityPanel";
+import { getDoctorAvailableSlots } from "@/lib/googleCalendarAvailability";
+import { getPublicDoctorSchedulingStatus } from "@/lib/doctorSchedulingStatus";
 import {
   findDoctorBySeoSlug,
   getDoctorSeoSlug,
@@ -20,6 +22,36 @@ type ArztDetailPageProps = {
 };
 
 export const dynamic = "force-dynamic";
+
+function getBookingStatusLabel(reason: "not_onboarded" | "profile_incomplete" | "calendar_not_connected" | "scheduling_not_enabled" | "active") {
+  if (reason === "not_onboarded") {
+    return "Aktuell keine Online-Termine verfügbar. Diese Praxis ist noch nicht im aktiven Terminportal freigeschaltet.";
+  }
+  if (reason === "profile_incomplete") {
+    return "Aktuell keine Online-Termine verfügbar. Das Terminprofil dieser Praxis wird gerade eingerichtet.";
+  }
+  if (reason === "calendar_not_connected") {
+    return "Aktuell keine Online-Termine verfügbar. Der Synchron-Kalender ist derzeit deaktiviert.";
+  }
+  if (reason === "scheduling_not_enabled") {
+    return "Aktuell keine Online-Termine verfügbar. Die Online-Buchung ist vorübergehend pausiert.";
+  }
+  return "Online-Termine sind aktiv.";
+}
+
+function formatSlotDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+  return new Intl.DateTimeFormat("de-AT", {
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
 
 export async function generateMetadata({ params }: Omit<ArztDetailPageProps, "searchParams">): Promise<Metadata> {
   const { id } = await params;
@@ -71,6 +103,10 @@ export default async function ArztDetailPage({ params, searchParams }: ArztDetai
   const workingHours = getDoctorWorkingHours(doctor);
   const mapsUrl = getGoogleMapsUrl(doctor);
   const mapsEmbedUrl = getGoogleMapsEmbedUrl(doctor);
+  const bookingStatus = await getPublicDoctorSchedulingStatus(doctor.id);
+  const bookingStatusLabel = getBookingStatusLabel(bookingStatus.reason);
+  const slotResult = await getDoctorAvailableSlots(doctor.id);
+  const visibleSlots = slotResult.slots.slice(0, 8);
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 pb-16 pt-8 sm:px-6 lg:px-8">
@@ -164,11 +200,23 @@ export default async function ArztDetailPage({ params, searchParams }: ArztDetai
           </div>
 
           <div className="mt-6">
-            <AppointmentRequestModal
-              doctor={doctor}
-              source="arzt-detail"
-              triggerClassName="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-500 sm:w-auto"
-            />
+            {bookingStatus.canBookOnline ? (
+              <AppointmentRequestModal
+                doctor={doctor}
+                source="arzt-detail"
+                availableSlots={visibleSlots}
+                triggerClassName="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-500 sm:w-auto"
+              />
+            ) : null}
+            {doctor.email ? (
+              <a
+                href={`mailto:${doctor.email}?subject=${encodeURIComponent(`Direkte Anfrage: ${doctor.name}`)}`}
+                className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 sm:mt-0 sm:ml-3 sm:w-auto"
+              >
+                Direkt fragen
+              </a>
+            ) : null}
+            {!bookingStatus.canBookOnline ? <p className="mt-3 text-sm text-slate-600">{bookingStatusLabel}</p> : null}
           </div>
         </article>
 
@@ -202,9 +250,24 @@ export default async function ArztDetailPage({ params, searchParams }: ArztDetai
 
           <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
             <h3 className="text-lg font-bold text-slate-900">Direkte Termin-Anfrage</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              Nutze das Formular, um deine Anfrage an diese Ordination oder an das Terminbörse-Team zu senden.
-            </p>
+            <p className="mt-2 text-sm text-slate-600">{bookingStatusLabel}</p>
+            {visibleSlots.length > 0 ? (
+              <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Nächste freie Slots</p>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  {visibleSlots.map((slot) => (
+                    <span key={slot.start} className="rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">
+                      {formatSlotDate(slot.start)}
+                    </span>
+                  ))}
+                </div>
+                {slotResult.status === "misconfigured" ? (
+                  <p className="mt-2 text-xs text-rose-700">Kalenderdaten sind aktuell nicht abrufbar. Bitte später erneut versuchen.</p>
+                ) : null}
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-slate-700">Aktuell wurden keine freien Zeiten eingetragen.</p>
+            )}
             <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
               <p className="inline-flex items-center gap-2">
                 <CalendarClock className="h-4 w-4 text-sky-600" />

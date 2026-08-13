@@ -31,6 +31,8 @@ type ArztDashboardDoctor = {
 
 type ArztDashboardProps = {
   doctors: ArztDashboardDoctor[];
+  role?: "admin" | "doctor";
+  authToken?: string;
 };
 
 type ProfileForm = {
@@ -82,6 +84,25 @@ type LegacyAvailabilityForm = Record<string, unknown>;
 
 type RequestStatus = "Neu" | "In Bearbeitung" | "Erledigt";
 type DashboardTab = "profil" | "leistungen" | "termine" | "anfragen";
+
+type ApprovalItem = {
+  id: string;
+  createdAt: string;
+  status: "pending" | "approved" | "rejected";
+  registrationType: "existing" | "new";
+  selectedDoctorId?: string;
+  doctorName?: string;
+  doctorEmail: string;
+  doctorPhone: string;
+  specialty?: string;
+  clinicAddress?: string;
+  district?: string;
+  providerType: "OEGK" | "Wahlarzt" | "Privat";
+  note?: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
+  approvedDoctorId?: string;
+};
 
 type LeistungItem = {
   id: string;
@@ -176,6 +197,26 @@ function getDefaultProfile(doctor: ArztDashboardDoctor): ProfileForm {
   };
 }
 
+function getEmptyProfile(): ProfileForm {
+  return {
+    name: "",
+    specialty: "",
+    district: "",
+    address: "",
+    phone: "",
+    email: "",
+    website: "",
+    about: "",
+    expertise: [],
+    languages: ["Deutsch"],
+    insuranceModels: ["OEGK"],
+    emergencyNote: "",
+    facebook: "",
+    instagram: "",
+    tiktok: "",
+  };
+}
+
 function getDefaultAvailability(): AvailabilityForm {
   return {
     monday: { isClosed: false, opensAt: "08:30", closesAt: "16:00" },
@@ -208,6 +249,14 @@ function hashString(value: string) {
     hash = Math.imul(hash, 16777619);
   }
   return Math.abs(hash >>> 0);
+}
+
+function createClientId() {
+  if (typeof globalThis.crypto !== "undefined" && typeof globalThis.crypto.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return `id-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function getMockRequestsForDoctor(doctor: ArztDashboardDoctor): IncomingRequest[] {
@@ -364,7 +413,7 @@ function normalizeStoredLeistungen(rawLeistungen: LegacyLeistungItem[] | null): 
           return null;
         }
         return {
-          id: crypto.randomUUID(),
+          id: createClientId(),
           title,
           description: "",
           durationMinutes: "",
@@ -378,7 +427,7 @@ function normalizeStoredLeistungen(rawLeistungen: LegacyLeistungItem[] | null): 
       }
 
       return {
-        id: typeof entry.id === "string" && entry.id.length > 0 ? entry.id : crypto.randomUUID(),
+        id: typeof entry.id === "string" && entry.id.length > 0 ? entry.id : createClientId(),
         title,
         description: typeof entry.description === "string" ? entry.description : "",
         durationMinutes:
@@ -407,8 +456,12 @@ function formatDateTime(value: string) {
   }).format(date);
 }
 
-export function ArztDashboard({ doctors }: ArztDashboardProps) {
-  const [selectedDoctorId, setSelectedDoctorId] = useState(doctors[0]?.id ?? "");
+export function ArztDashboard({ doctors, role, authToken }: ArztDashboardProps) {
+  const [selectedDoctorId, setSelectedDoctorId] = useState("");
+  const [doctorSearchTerm, setDoctorSearchTerm] = useState("");
+  const [remoteSearchDoctors, setRemoteSearchDoctors] = useState<ArztDashboardDoctor[]>([]);
+  const [isSearchingDoctors, setIsSearchingDoctors] = useState(false);
+  const [doctorSearchError, setDoctorSearchError] = useState("");
   const [activeTab, setActiveTab] = useState<DashboardTab>("profil");
   const [profileForm, setProfileForm] = useState<ProfileForm | null>(null);
   const [availabilityForm, setAvailabilityForm] = useState<AvailabilityForm>(getDefaultAvailability());
@@ -419,11 +472,102 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
   const [leistungen, setLeistungen] = useState<LeistungItem[]>([]);
   const [newLeistungTitle, setNewLeistungTitle] = useState("");
   const [savedLeistungen, setSavedLeistungen] = useState(false);
+  const [approvalItems, setApprovalItems] = useState<ApprovalItem[]>([]);
+  const [isLoadingApprovals, setIsLoadingApprovals] = useState(false);
+  const [approvalsError, setApprovalsError] = useState("");
+
+  const selectableDoctors = useMemo(() => {
+    const map = new Map<string, ArztDashboardDoctor>();
+    for (const doctor of doctors) {
+      map.set(doctor.id, doctor);
+    }
+    for (const doctor of remoteSearchDoctors) {
+      map.set(doctor.id, doctor);
+    }
+    return Array.from(map.values());
+  }, [doctors, remoteSearchDoctors]);
 
   const selectedDoctor = useMemo(
-    () => doctors.find((doctor) => doctor.id === selectedDoctorId) ?? doctors[0],
-    [doctors, selectedDoctorId],
+    () => selectableDoctors.find((doctor) => doctor.id === selectedDoctorId) ?? null,
+    [selectableDoctors, selectedDoctorId],
   );
+
+  const normalizedSearchTerm = doctorSearchTerm.trim().toLowerCase();
+  const isSearchReady = normalizedSearchTerm.length >= 3;
+
+  const filteredDoctors = useMemo(() => {
+    if (!isSearchReady) {
+      return [];
+    }
+
+    if (role === "admin") {
+      return remoteSearchDoctors;
+    }
+
+    const matches = doctors.filter((doctor) => {
+      const searchable = `${doctor.name} ${doctor.specialty} ${doctor.district} ${doctor.address}`.toLowerCase();
+      return searchable.includes(normalizedSearchTerm);
+    });
+
+    return matches
+      .sort((a, b) => {
+        const aStarts = a.name.toLowerCase().startsWith(normalizedSearchTerm) ? 0 : 1;
+        const bStarts = b.name.toLowerCase().startsWith(normalizedSearchTerm) ? 0 : 1;
+        if (aStarts !== bStarts) {
+          return aStarts - bStarts;
+        }
+        return a.name.localeCompare(b.name, "de");
+      })
+      .slice(0, 25);
+  }, [doctors, isSearchReady, normalizedSearchTerm, remoteSearchDoctors, role]);
+
+  useEffect(() => {
+    async function runSearch() {
+      if (role !== "admin") {
+        setDoctorSearchError("");
+        setRemoteSearchDoctors([]);
+        return;
+      }
+
+      if (!isSearchReady || !authToken) {
+        setDoctorSearchError("");
+        setRemoteSearchDoctors([]);
+        return;
+      }
+
+      setIsSearchingDoctors(true);
+      setDoctorSearchError("");
+
+      try {
+        const response = await fetch("/api/arztbereich/search-doctors", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ token: authToken, query: doctorSearchTerm, limit: 25 }),
+        });
+
+        const payload = (await response.json()) as {
+          ok?: boolean;
+          error?: string;
+          doctors?: ArztDashboardDoctor[];
+        };
+
+        if (!response.ok || !payload.ok || !Array.isArray(payload.doctors)) {
+          throw new Error(payload.error ?? "Suche fehlgeschlagen.");
+        }
+
+        setRemoteSearchDoctors(payload.doctors);
+      } catch (error) {
+        setDoctorSearchError(error instanceof Error ? error.message : "Suche fehlgeschlagen.");
+        setRemoteSearchDoctors([]);
+      } finally {
+        setIsSearchingDoctors(false);
+      }
+    }
+
+    void runSearch();
+  }, [role, isSearchReady, authToken, doctorSearchTerm]);
 
   const incomingRequests = useMemo(() => {
     if (!selectedDoctor) {
@@ -433,21 +577,46 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
   }, [selectedDoctor]);
 
   useEffect(() => {
-    if (!selectedDoctor) {
-      return;
-    }
-
-    const profileStorageKey = `terminboerse_arzt_profile_${selectedDoctor.id}`;
-    const availabilityStorageKey = `terminboerse_arzt_availability_${selectedDoctor.id}`;
-    const appointmentStorageKey = `terminboerse_arzt_appointments_${selectedDoctor.id}`;
-    const leistungenStorageKey = `terminboerse_arzt_services_${selectedDoctor.id}`;
+    const profileStorageKey = selectedDoctor
+      ? `terminboerse_arzt_profile_${selectedDoctor.id}`
+      : "terminboerse_arzt_profile_draft_new";
+    const availabilityStorageKey = selectedDoctor
+      ? `terminboerse_arzt_availability_${selectedDoctor.id}`
+      : "terminboerse_arzt_availability_draft_new";
+    const appointmentStorageKey = selectedDoctor
+      ? `terminboerse_arzt_appointments_${selectedDoctor.id}`
+      : "terminboerse_arzt_appointments_draft_new";
+    const leistungenStorageKey = selectedDoctor
+      ? `terminboerse_arzt_services_${selectedDoctor.id}`
+      : "terminboerse_arzt_services_draft_new";
 
     const storedProfile = readJsonFromStorage<LegacyProfileForm>(profileStorageKey);
     const storedAvailability = readJsonFromStorage<LegacyAvailabilityForm>(availabilityStorageKey);
     const storedAppointmentSettings = readJsonFromStorage<AppointmentForm>(appointmentStorageKey);
     const storedLeistungen = readJsonFromStorage<LegacyLeistungItem[]>(leistungenStorageKey);
 
-    setProfileForm(normalizeStoredProfile(storedProfile, selectedDoctor));
+    const fallbackDoctor: ArztDashboardDoctor = selectedDoctor ?? {
+      id: "draft-new",
+      name: "",
+      specialty: "",
+      district: "",
+      address: "",
+      providerType: "OEGK",
+    };
+
+    const nextProfile = selectedDoctor
+      ? normalizeStoredProfile(storedProfile, selectedDoctor)
+      : {
+          ...getEmptyProfile(),
+          ...normalizeStoredProfile(storedProfile, fallbackDoctor),
+          name: storedProfile?.name?.trim() ?? "",
+          specialty: storedProfile?.specialty?.trim() ?? "",
+          district: storedProfile?.district?.trim() ?? "",
+          address: storedProfile?.address?.trim() ?? "",
+          about: storedProfile?.about?.trim() ?? "",
+        };
+
+    setProfileForm(nextProfile);
     setAvailabilityForm(normalizeStoredAvailability(storedAvailability));
     setAppointmentForm(storedAppointmentSettings ?? getDefaultAppointmentSettings());
     setLeistungen(normalizeStoredLeistungen(storedLeistungen));
@@ -458,7 +627,7 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
     setSavedLeistungen(false);
   }, [selectedDoctor]);
 
-  if (!selectedDoctor || !profileForm) {
+  if (!profileForm) {
     return (
       <main className="mx-auto w-full max-w-6xl px-4 pb-16 pt-8 sm:px-6 lg:px-8">
         <section className="rounded-3xl border border-rose-200 bg-rose-50 p-6 text-rose-800">
@@ -468,29 +637,39 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
     );
   }
 
-  const profileUrl = `/arzt/${encodeURIComponent(getDoctorSeoSlug({
-    id: selectedDoctor.id,
-    name: profileForm.name,
-    specialty: profileForm.specialty,
-    district: profileForm.district,
-  }))}`;
+  const profileUrl = selectedDoctor
+    ? `/arzt/${encodeURIComponent(
+        getDoctorSeoSlug({
+          id: selectedDoctor.id,
+          name: profileForm.name,
+          specialty: profileForm.specialty,
+          district: profileForm.district,
+        }),
+      )}`
+    : null;
 
   function saveProfile() {
-    const profileStorageKey = `terminboerse_arzt_profile_${selectedDoctor.id}`;
+    const profileStorageKey = selectedDoctor
+      ? `terminboerse_arzt_profile_${selectedDoctor.id}`
+      : "terminboerse_arzt_profile_draft_new";
     localStorage.setItem(profileStorageKey, JSON.stringify(profileForm));
     setSavedProfile(true);
     window.setTimeout(() => setSavedProfile(false), 1800);
   }
 
   function saveAvailability() {
-    const availabilityStorageKey = `terminboerse_arzt_availability_${selectedDoctor.id}`;
+    const availabilityStorageKey = selectedDoctor
+      ? `terminboerse_arzt_availability_${selectedDoctor.id}`
+      : "terminboerse_arzt_availability_draft_new";
     localStorage.setItem(availabilityStorageKey, JSON.stringify(availabilityForm));
     setSavedAvailability(true);
     window.setTimeout(() => setSavedAvailability(false), 1800);
   }
 
   function saveAppointments() {
-    const appointmentStorageKey = `terminboerse_arzt_appointments_${selectedDoctor.id}`;
+    const appointmentStorageKey = selectedDoctor
+      ? `terminboerse_arzt_appointments_${selectedDoctor.id}`
+      : "terminboerse_arzt_appointments_draft_new";
     localStorage.setItem(appointmentStorageKey, JSON.stringify(appointmentForm));
     setSavedAppointments(true);
     window.setTimeout(() => setSavedAppointments(false), 1800);
@@ -504,7 +683,7 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
     setLeistungen((prev) => [
       ...prev,
       {
-        id: crypto.randomUUID(),
+        id: createClientId(),
         title,
         description: "",
         durationMinutes: "",
@@ -523,7 +702,9 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
   }
 
   function saveLeistungen() {
-    const leistungenStorageKey = `terminboerse_arzt_services_${selectedDoctor.id}`;
+    const leistungenStorageKey = selectedDoctor
+      ? `terminboerse_arzt_services_${selectedDoctor.id}`
+      : "terminboerse_arzt_services_draft_new";
     const cleaned = leistungen
       .map((item) => ({
         ...item,
@@ -546,6 +727,79 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
     .map((item) => item.trim())
     .filter(Boolean);
 
+  async function loadApprovals() {
+    if (!authToken || role !== "admin") {
+      return;
+    }
+
+    setIsLoadingApprovals(true);
+    setApprovalsError("");
+
+    try {
+      const response = await fetch("/api/arztbereich/approvals", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ token: authToken }),
+      });
+
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        error?: string;
+        requests?: ApprovalItem[];
+      };
+
+      if (!response.ok || !payload.ok || !Array.isArray(payload.requests)) {
+        throw new Error(payload.error ?? "Freigaben konnten nicht geladen werden.");
+      }
+
+      setApprovalItems(payload.requests);
+    } catch (error) {
+      setApprovalsError(error instanceof Error ? error.message : "Freigaben konnten nicht geladen werden.");
+    } finally {
+      setIsLoadingApprovals(false);
+    }
+  }
+
+  async function reviewApproval(requestId: string, decision: "approve" | "reject") {
+    if (!authToken || role !== "admin") {
+      return;
+    }
+
+    setApprovalsError("");
+
+    try {
+      const response = await fetch("/api/arztbereich/approvals/review", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ token: authToken, requestId, decision }),
+      });
+
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        error?: string;
+      };
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error ?? "Aktion fehlgeschlagen.");
+      }
+
+      await loadApprovals();
+    } catch (error) {
+      setApprovalsError(error instanceof Error ? error.message : "Aktion fehlgeschlagen.");
+    }
+  }
+
+  useEffect(() => {
+    if (role === "admin" && activeTab === "profil") {
+      void loadApprovals();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, role]);
+
   return (
     <main className="mx-auto w-full max-w-6xl px-4 pb-16 pt-8 sm:px-6 lg:px-8">
       <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm md:p-8">
@@ -558,30 +812,103 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
           Pflege dein Profil, aktualisiere Verfuegbarkeiten und behalte eingehende Anfragen im Blick.
         </p>
 
-        <div className="mt-5 grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
-          <label className="block text-sm">
-            <span className="mb-1 block font-semibold text-slate-700">Arztprofil auswaehlen</span>
-            <select
-              value={selectedDoctorId}
-              onChange={(event) => setSelectedDoctorId(event.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-            >
-              {doctors.map((doctor) => (
-                <option key={doctor.id} value={doctor.id}>
-                  {doctor.name} - {doctor.specialty} ({doctor.district})
-                </option>
-              ))}
-            </select>
-          </label>
+        <div className="mt-5 grid gap-3 lg:grid-cols-[1fr_auto] lg:items-start">
+          <div className="grid gap-3">
+            <label className="block text-sm">
+              <span className="mb-1 block font-semibold text-slate-700">Profil suchen</span>
+              <input
+                value={doctorSearchTerm}
+                onChange={(event) => setDoctorSearchTerm(event.target.value)}
+                placeholder="Name, Fachbereich, Bezirk..."
+                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+              />
+            </label>
 
-          <Link
-            href={profileUrl}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-sky-300 bg-sky-50 px-4 py-2 text-sm font-semibold text-sky-700 transition hover:bg-sky-100"
-          >
-            <Eye className="h-4 w-4" />
-            Oeffentliches Profil ansehen
-          </Link>
+            {doctorSearchTerm.trim().length > 0 && !isSearchReady ? (
+              <p className="text-xs font-medium text-slate-500">Mindestens 3 Zeichen eingeben, dann erscheinen Treffer.</p>
+            ) : null}
+
+            {isSearchingDoctors ? <p className="text-xs font-medium text-slate-500">Suche läuft...</p> : null}
+            {doctorSearchError ? <p className="text-xs font-semibold text-rose-700">{doctorSearchError}</p> : null}
+
+            {isSearchReady ? (
+              <div className="rounded-xl border border-slate-200 bg-white">
+                {filteredDoctors.length > 0 ? (
+                  <ul className="max-h-72 divide-y divide-slate-100 overflow-auto">
+                    {filteredDoctors.map((doctor) => (
+                      <li key={doctor.id}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedDoctorId(doctor.id);
+                            setDoctorSearchTerm(doctor.name);
+                          }}
+                          className={`w-full px-3 py-2 text-left text-sm transition hover:bg-sky-50 ${
+                            selectedDoctorId === doctor.id ? "bg-sky-50" : ""
+                          }`}
+                        >
+                          <p className="font-semibold text-slate-900">{doctor.name}</p>
+                          <p className="text-xs text-slate-600">
+                            {doctor.specialty} - {doctor.district}
+                          </p>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="px-3 py-2 text-xs font-medium text-amber-700">Keine Treffer gefunden.</p>
+                )}
+              </div>
+            ) : null}
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedDoctorId("");
+                  setDoctorSearchTerm("");
+                }}
+                className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700"
+              >
+                Leeres Profil (neu)
+              </button>
+              {selectedDoctor ? (
+                <span className="text-xs font-medium text-slate-600">
+                  Ausgewählt: {selectedDoctor.name} ({selectedDoctor.specialty})
+                </span>
+              ) : (
+                <span className="text-xs font-medium text-amber-700">Aktiv: Leeres Profil</span>
+              )}
+            </div>
+          </div>
+
+          {profileUrl ? (
+            <Link
+              href={profileUrl}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-sky-300 bg-sky-50 px-4 py-2 text-sm font-semibold text-sky-700 transition hover:bg-sky-100"
+            >
+              <Eye className="h-4 w-4" />
+              Oeffentliches Profil ansehen
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedDoctorId("");
+                setDoctorSearchTerm("");
+              }}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700"
+            >
+              Neues Profil bearbeiten
+            </button>
+          )}
         </div>
+
+        {!selectedDoctor ? (
+          <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+            Du bearbeitest gerade ein leeres Profil. Über die Suche kannst du ein vorhandenes Profil auswählen.
+          </p>
+        ) : null}
 
         <div className="mt-5 flex flex-wrap gap-2">
           <button
@@ -976,6 +1303,77 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
                   ) : null}
                 </div>
               </article>
+
+              {role === "admin" ? (
+                <article className="rounded-[2rem] border border-amber-200 bg-amber-50 p-6 shadow-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <h2 className="text-lg font-bold text-slate-900">Wartende Freischaltungen</h2>
+                    <button
+                      type="button"
+                      onClick={() => void loadApprovals()}
+                      className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                    >
+                      Aktualisieren
+                    </button>
+                  </div>
+
+                  {approvalsError ? <p className="mt-3 text-sm font-semibold text-rose-700">{approvalsError}</p> : null}
+                  {isLoadingApprovals ? <p className="mt-3 text-sm text-slate-600">Lädt...</p> : null}
+
+                  <div className="mt-4 grid gap-3">
+                    {approvalItems.length > 0 ? (
+                      approvalItems.map((item) => (
+                        <article key={item.id} className="rounded-xl border border-amber-200 bg-white p-3 text-sm">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <p className="font-bold text-slate-900">{item.doctorName || item.doctorEmail}</p>
+                              <p className="text-slate-700">{item.doctorEmail}</p>
+                              <p className="text-slate-600">
+                                Typ: {item.registrationType === "existing" ? "Bestehendes Profil" : "Neues Profil"}
+                              </p>
+                              {item.selectedDoctorId ? <p className="text-slate-600">Profil-ID: {item.selectedDoctorId}</p> : null}
+                            </div>
+                            <span
+                              className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                                item.status === "pending"
+                                  ? "bg-amber-100 text-amber-800"
+                                  : item.status === "approved"
+                                    ? "bg-emerald-100 text-emerald-800"
+                                    : "bg-rose-100 text-rose-800"
+                              }`}
+                            >
+                              {item.status === "pending" ? "Ausstehend" : item.status === "approved" ? "Genehmigt" : "Abgelehnt"}
+                            </span>
+                          </div>
+
+                          <p className="mt-2 text-xs text-slate-500">{formatDateTime(item.createdAt)}</p>
+
+                          {item.status === "pending" ? (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => void reviewApproval(item.id, "approve")}
+                                className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-500"
+                              >
+                                Freigeben
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void reviewApproval(item.id, "reject")}
+                                className="rounded-lg bg-rose-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-rose-500"
+                              >
+                                Ablehnen
+                              </button>
+                            </div>
+                          ) : null}
+                        </article>
+                      ))
+                    ) : (
+                      !isLoadingApprovals ? <p className="text-sm text-slate-600">Aktuell keine Registrierungsanfragen.</p> : null
+                    )}
+                  </div>
+                </article>
+              ) : null}
 
               <article className="rounded-[2rem] border border-sky-200 bg-sky-50 p-6 shadow-sm">
                 <h2 className="text-lg font-bold text-slate-900">Profilvorschau</h2>
@@ -1391,6 +1789,7 @@ export function ArztDashboard({ doctors }: ArztDashboardProps) {
           </div>
         </section>
       ) : null}
+
     </main>
   );
 }

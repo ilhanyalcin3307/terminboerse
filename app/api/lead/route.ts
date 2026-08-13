@@ -10,7 +10,30 @@ type LeadBody = {
   patientEmail?: string;
   patientPhone?: string;
   note?: string;
+  slotId?: string;
+  slotStart?: string;
+  slotEnd?: string;
 };
+
+function formatSlot(value?: string) {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+
+  return new Intl.DateTimeFormat("de-AT", {
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
 
 export async function POST(request: Request) {
   try {
@@ -26,9 +49,12 @@ export async function POST(request: Request) {
     const fallbackEmail = process.env.LEAD_FALLBACK_EMAIL ?? "kontakt@terminboerse.at";
     const recipient = doctor.email ?? fallbackEmail;
     const claimUrl = `${siteUrl}/arzt/${encodeURIComponent(getDoctorSeoSlug(doctor))}?claim=true`;
+    const registerUrl = `${siteUrl}/arztbereich?mode=register&doctorId=${encodeURIComponent(doctor.id)}${doctor.email ? `&email=${encodeURIComponent(doctor.email)}` : ""}`;
     const fromEmail = process.env.RESEND_FROM_EMAIL ?? "Terminbörse <onboarding@resend.dev>";
 
     const subject = `Neue Termin-Anfrage für ${doctor.name} über Terminbörse.at`;
+    const slotStartLabel = formatSlot(body.slotStart);
+    const slotEndLabel = formatSlot(body.slotEnd);
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #0f172a;">
         <h2 style="margin-bottom: 12px;">Neue Termin-Anfrage über Terminbörse.at</h2>
@@ -40,12 +66,18 @@ export async function POST(request: Request) {
           <p><strong>Telefon:</strong> ${body.patientPhone}</p>
           <p><strong>Fachbereich:</strong> ${doctor.specialty}</p>
           <p><strong>Standort:</strong> ${doctor.address}</p>
+          <p><strong>Gebuchter Slot:</strong> ${slotStartLabel} bis ${slotEndLabel}</p>
           <p><strong>Notiz:</strong> ${body.note?.trim() ? body.note : "Keine zusätzliche Notiz"}</p>
         </div>
-        <p>Sie können dem Patienten direkt antworten oder Ihr Profil auf Terminbörse.at kostenlos beanspruchen.</p>
+        <p>Sie können dem Patienten direkt antworten oder Ihren Arztbereich-Zugang beantragen.</p>
         <p style="margin: 24px 0;">
           <a href="${claimUrl}" style="display: inline-block; background: #0284c7; color: white; text-decoration: none; padding: 12px 18px; border-radius: 999px; font-weight: bold;">
             Profil jetzt beanspruchen
+          </a>
+        </p>
+        <p style="margin: 0 0 24px 0;">
+          <a href="${registerUrl}" style="display: inline-block; background: #0f172a; color: white; text-decoration: none; padding: 12px 18px; border-radius: 999px; font-weight: bold;">
+            Arztbereich-Zugang beantragen
           </a>
         </p>
         <p style="font-size: 14px; color: #475569;">Quelle: ${body.source ?? "unbekannt"}</p>
@@ -53,7 +85,7 @@ export async function POST(request: Request) {
     `;
 
     if (!process.env.RESEND_API_KEY) {
-      console.log("[Simulated lead email]", { recipient, subject, claimUrl, doctor: doctor.id });
+      console.log("[Simulated lead email]", { recipient, subject, claimUrl, registerUrl, doctor: doctor.id });
       return NextResponse.json({ ok: true, simulated: true, recipient });
     }
 

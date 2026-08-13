@@ -21,6 +21,24 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.9,
     },
     {
+      url: `${BASE_URL}/arztbereich`,
+      lastModified,
+      changeFrequency: "weekly",
+      priority: 0.8,
+    },
+    {
+      url: `${BASE_URL}/login`,
+      lastModified,
+      changeFrequency: "monthly",
+      priority: 0.6,
+    },
+    {
+      url: `${BASE_URL}/profil`,
+      lastModified,
+      changeFrequency: "monthly",
+      priority: 0.5,
+    },
+    {
       url: `${BASE_URL}/kontakt`,
       lastModified,
       changeFrequency: "monthly",

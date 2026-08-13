@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import doctorsJson from "@/data/doctors.json";
+import { getDoctorCommunityPreviews } from "@/lib/doctorCommunity";
+import { getNextFreeSlotMap } from "@/lib/manualDoctorSlots";
 import {
   getDoctorDistricts,
   getDoctorSpecialties,
@@ -37,6 +39,21 @@ function parsePositiveInt(value: string | null, fallback: number) {
   return Math.floor(parsed);
 }
 
+function formatNextSlot(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return undefined;
+  }
+
+  return new Intl.DateTimeFormat("de-AT", {
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
 
@@ -61,7 +78,25 @@ export async function GET(request: Request) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(page, totalPages);
   const offset = (safePage - 1) * pageSize;
-  const doctors = filtered.slice(offset, offset + pageSize);
+  const doctorsPage = filtered.slice(offset, offset + pageSize);
+  const communityByDoctorId = new Map(
+    (await getDoctorCommunityPreviews(doctorsPage.map((doctor) => doctor.id))).map((entry) => [entry.doctorId, entry]),
+  );
+  const nextSlotByDoctorId = await getNextFreeSlotMap(doctorsPage.map((doctor) => doctor.id));
+
+  const doctors = doctorsPage.map((doctor) => {
+    const community = communityByDoctorId.get(doctor.id);
+    const nextSlot = nextSlotByDoctorId.get(doctor.id);
+
+    return {
+      ...doctor,
+      nextSlot: nextSlot ? formatNextSlot(nextSlot.start) : doctor.nextSlot,
+      averageRating: community?.averageRating,
+      ratingsCount: community?.ratingsCount,
+      commentsCount: community?.commentsCount,
+      viewsCount: community?.viewsCount,
+    };
+  });
 
   return NextResponse.json({
     doctors,

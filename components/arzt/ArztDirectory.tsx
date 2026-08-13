@@ -1,18 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Globe,
   MapPin,
+  Eye,
   PhoneCall,
   Search,
   ShieldCheck,
   Stethoscope,
   Route,
 } from "lucide-react";
-import { AppointmentRequestModal } from "@/components/arzt/AppointmentRequestModal";
 import { DevAnalyticsPanel } from "@/components/analytics/DevAnalyticsPanel";
 import { trackEvent } from "@/lib/analytics";
 import { getDoctorSeoSlug, getGoogleMapsUrl, normalizeDoctorSearchText, type DoctorRecord } from "@/lib/doctors";
@@ -46,6 +46,16 @@ type DoctorsApiPayload = {
     totalSpecialties?: number;
   };
 };
+
+function formatCompactCount(value?: number) {
+  const safe = typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
+
+  if (safe >= 1000) {
+    return `${(safe / 1000).toFixed(1).replace(/\.0$/, "")}K`;
+  }
+
+  return String(safe);
+}
 
 function parseDistrictFromSearch(query: string, districts: string[]) {
   const normalizedQuery = normalizeDoctorSearchText(query);
@@ -143,6 +153,7 @@ export function ArztDirectory({
   const [selectedDistrict, setSelectedDistrict] = useState(initialSelectedDistrict);
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
   const [smartParsingApplied, setSmartParsingApplied] = useState(initialSearchQuery.trim() === "");
+  const lastImpressionKeyRef = useRef("");
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -233,6 +244,36 @@ export function ArztDirectory({
       window.clearTimeout(timeoutId);
     };
   }, [initialSearchQuery, page, searchQuery, selectedDistrict, selectedSpecialty, smartParsingApplied]);
+
+  useEffect(() => {
+    if (isLoading || errorMessage || doctors.length === 0) {
+      return;
+    }
+
+    const doctorIds = doctors.map((doctor) => doctor.id).filter(Boolean);
+    if (doctorIds.length === 0) {
+      return;
+    }
+
+    const impressionKey = `${selectedDistrict}::${selectedSpecialty}::${searchQuery.trim()}::${page}::${doctorIds.join("|")}`;
+    if (lastImpressionKeyRef.current === impressionKey) {
+      return;
+    }
+
+    lastImpressionKeyRef.current = impressionKey;
+
+    void fetch("/api/doctor-community/batch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        event: "list_impression",
+        doctorIds,
+      }),
+      keepalive: true,
+    }).catch((error) => {
+      console.error("Listen-Impressions konnten nicht gespeichert werden", error);
+    });
+  }, [doctors, errorMessage, isLoading, page, searchQuery, selectedDistrict, selectedSpecialty]);
 
   const featuredSpecialties = useMemo(() => specialties.slice(1, 7), [specialties]);
 
@@ -408,6 +449,12 @@ export function ArztDirectory({
               </div>
 
               <div className="mt-4 space-y-2 text-sm text-slate-600">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">
+                    <Eye className="h-3.5 w-3.5" />
+                    {formatCompactCount(doctor.viewsCount)} Aufrufe
+                  </span>
+                </div>
                 <p className="inline-flex items-start gap-2">
                   <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
                   <span>{doctor.district} · {doctor.address}</span>
@@ -485,11 +532,22 @@ export function ArztDirectory({
                 >
                   Profil ansehen
                 </Link>
-                <AppointmentRequestModal
-                  doctor={doctor}
-                  source="arzt-card"
-                  triggerClassName="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-500"
-                />
+                <Link
+                  href={`/arzt/${encodeURIComponent(getDoctorSeoSlug(doctor))}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    trackEvent("cta_clicked", {
+                      source: "arzt-directory",
+                      action: "doctor_detail_slots",
+                      doctor_id: doctor.id,
+                      category: doctor.specialty,
+                      district: doctor.district,
+                    });
+                  }}
+                  className="inline-flex items-center justify-center rounded-xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-500"
+                >
+                  Verfügbarkeit prüfen
+                </Link>
               </div>
             </article>
           )) : null}
