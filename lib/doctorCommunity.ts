@@ -1,3 +1,5 @@
+import { createSupabaseAdminClient } from "@/lib/supabaseAdmin";
+
 type DoctorComment = {
   id: string;
   author: string;
@@ -26,6 +28,7 @@ type DoctorViewCountersState = {
   entries: DoctorViewCountersEntry[];
 };
 
+const SUPABASE_TABLE = "doctor_view_counters";
 const STORE_KEY = "terminboerse:doctor-community:views:v1";
 const DEFAULT_VIEW_STATE: DoctorViewCountersState = { entries: [] };
 
@@ -43,6 +46,12 @@ function hashString(value: string) {
 function getSeededBaseMetrics(doctorId: string) {
   const seed = hashString(doctorId);
   return { ratingsCount: 0, commentsCount: 0, averageRating: 0, seed };
+}
+
+function hasSupabaseConfig() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? "";
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ?? "";
+  return Boolean(url && key);
 }
 
 function getKvConfig() {
@@ -144,6 +153,66 @@ function getEntryByDoctorId(state: DoctorViewCountersState, doctorId: string): D
   };
 }
 
+async function getSupabaseCounters(doctorId: string): Promise<DoctorViewCountersEntry | null> {
+  const client = createSupabaseAdminClient();
+  const { data, error } = await client
+    .from(SUPABASE_TABLE)
+    .select("doctor_id, profile_views, list_impressions, updated_at")
+    .eq("doctor_id", doctorId)
+    .maybeSingle();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return {
+    doctorId: data.doctor_id,
+    profileViews: normalizeCount(data.profile_views),
+    listImpressions: normalizeCount(data.list_impressions),
+    updatedAt: data.updated_at ?? new Date(0).toISOString(),
+  };
+}
+
+async function bumpSupabaseCounters(doctorId: string, profileViewsDelta: number, listImpressionsDelta: number) {
+  const client = createSupabaseAdminClient();
+  const current = (await getSupabaseCounters(doctorId)) ?? {
+    doctorId,
+    profileViews: 0,
+    listImpressions: 0,
+    updatedAt: new Date(0).toISOString(),
+  };
+
+  const { error } = await client.from(SUPABASE_TABLE).upsert(
+    {
+      doctor_id: doctorId,
+      profile_views: current.profileViews + profileViewsDelta,
+      list_impressions: current.listImpressions + listImpressionsDelta,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "doctor_id" },
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function getTopSupabaseCounters(limit: number) {
+  const client = createSupabaseAdminClient();
+  const { data, error } = await client
+    .from(SUPABASE_TABLE)
+    .select("doctor_id, profile_views")
+    .gt("profile_views", 0)
+    .order("profile_views", { ascending: false })
+    .limit(limit);
+
+  if (error || !data) {
+    return [];
+  }
+
+  return data.map((row) => ({ doctorId: row.doctor_id as string, profileViews: normalizeCount(row.profile_views) }));
+}
+
 async function bumpViewCounters(doctorId: string, patch: { profileViewsDelta?: number; listImpressionsDelta?: number }) {
   const normalizedDoctorId = doctorId.trim();
   if (!normalizedDoctorId) {
@@ -154,6 +223,15 @@ async function bumpViewCounters(doctorId: string, patch: { profileViewsDelta?: n
   const listImpressionsDelta = normalizeCount(patch.listImpressionsDelta);
   if (profileViewsDelta === 0 && listImpressionsDelta === 0) {
     return;
+  }
+
+  if (hasSupabaseConfig()) {
+    try {
+      await bumpSupabaseCounters(normalizedDoctorId, profileViewsDelta, listImpressionsDelta);
+      return;
+    } catch {
+      // fall through to KV/in-memory store below
+    }
   }
 
   const state = await loadViewState();
@@ -211,8 +289,16 @@ export async function trackDoctorListImpressions(doctorIds: string[]) {
 
 export async function getDoctorCommunitySnapshot(doctorId: string): Promise<DoctorCommunitySnapshot> {
   const base = getSeededBaseMetrics(doctorId);
-  const state = await loadViewState();
-  const counters = getEntryByDoctorId(state, doctorId);
+
+  let counters: DoctorViewCountersEntry | null = null;
+  if (hasSupabaseConfig()) {
+    counters = await getSupabaseCounters(doctorId);
+  }
+  if (!counters) {
+    const state = await loadViewState();
+    counters = getEntryByDoctorId(state, doctorId);
+  }
+
   const profileViews = counters?.profileViews ?? 0;
   const listImpressions = counters?.listImpressions ?? 0;
 
@@ -241,6 +327,14 @@ export async function getDoctorCommunityPreviews(doctorIds: string[]) {
 }
 
 export async function getTopViewedDoctorIds(limit: number) {
+  if (hasSupabaseConfig()) {
+    try {
+      return await getTopSupabaseCounters(limit);
+    } catch {
+      // fall through to KV/in-memory store below
+    }
+  }
+
   const state = await loadViewState();
 
   return state.entries
