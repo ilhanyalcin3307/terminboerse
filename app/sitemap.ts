@@ -1,70 +1,75 @@
 import type { MetadataRoute } from "next";
 import doctorsJson from "@/data/doctors.json";
-import { getDoctorSeoSlug, normalizeDoctorsData } from "@/lib/doctors";
+import { getCustomProfiles, getHiddenDoctorIds } from "@/lib/arztbereichAdminStore";
+import { getDoctorSeoSlug, mergeDoctorProfiles, normalizeDoctorsData } from "@/lib/doctors";
 
 const BASE_URL = "https://www.terminboerse.at";
+const SPECIALTY_LANDING_PATHS = ["hausarzt", "hautarzt", "frauenarzt", "zahnarzt", "kinderarzt"];
+const GUIDE_PATHS = ["arzttermin-wien", "arzttermin-kurzfristig", "facharzttermin-wien"];
 
-export default function sitemap(): MetadataRoute.Sitemap {
-  const lastModified = new Date();
-
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticRoutes: MetadataRoute.Sitemap = [
     {
       url: `${BASE_URL}/`,
-      lastModified,
       changeFrequency: "daily",
       priority: 1,
     },
     {
       url: `${BASE_URL}/arzt`,
-      lastModified,
       changeFrequency: "daily",
       priority: 0.9,
     },
+    ...SPECIALTY_LANDING_PATHS.map((specialty) => ({
+      url: `${BASE_URL}/arzttermin-wien/${specialty}`,
+      changeFrequency: "weekly" as const,
+      priority: 0.85,
+    })),
+    ...GUIDE_PATHS.map((topic) => ({
+      url: `${BASE_URL}/ratgeber/${topic}`,
+      changeFrequency: "monthly" as const,
+      priority: 0.75,
+    })),
     {
       url: `${BASE_URL}/arztbereich`,
-      lastModified,
       changeFrequency: "weekly",
       priority: 0.8,
     },
     {
       url: `${BASE_URL}/login`,
-      lastModified,
       changeFrequency: "monthly",
       priority: 0.6,
     },
     {
       url: `${BASE_URL}/profil`,
-      lastModified,
       changeFrequency: "monthly",
       priority: 0.5,
     },
     {
       url: `${BASE_URL}/kontakt`,
-      lastModified,
       changeFrequency: "monthly",
       priority: 0.6,
     },
     {
       url: `${BASE_URL}/impressum`,
-      lastModified,
       changeFrequency: "yearly",
       priority: 0.3,
     },
     {
       url: `${BASE_URL}/datenschutz`,
-      lastModified,
       changeFrequency: "yearly",
       priority: 0.3,
     },
     {
       url: `${BASE_URL}/handwerker`,
-      lastModified,
       changeFrequency: "monthly",
       priority: 0.4,
     },
   ];
 
-  const doctors = normalizeDoctorsData(doctorsJson);
+  const [customProfiles, hiddenDoctorIds] = await Promise.all([getCustomProfiles(), getHiddenDoctorIds()]);
+  const doctors = mergeDoctorProfiles(normalizeDoctorsData(doctorsJson), customProfiles).filter(
+    (doctor) => !hiddenDoctorIds.has(doctor.id),
+  );
   const seen = new Set<string>();
 
   const doctorRoutes: MetadataRoute.Sitemap = doctors
@@ -77,7 +82,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
     })
     .map((doctor) => ({
       url: `${BASE_URL}/arzt/${encodeURIComponent(getDoctorSeoSlug(doctor))}`,
-      lastModified,
       changeFrequency: "weekly",
       priority: 0.7,
     }));

@@ -1,7 +1,16 @@
 # TerminBoerse.at - DEV HANDOFF (Mola Sonrasi Buradan Devam)
 
-Son guncelleme: 2026-08-11
-Durum: Aktif, production canli (latest legal+seo+landing updates deploy edildi)
+Son guncelleme: 2026-08-13
+Durum: Aktif, production canli (Meistgesuchte Ärzte ranking + Supabase view-counter persistence deploy edildi)
+
+## 0) Son Session Delta (2026-08-19) - Live-Ranking Duzeltmesi
+- Problem: Ana sayfadaki "Live-Ranking" toplam profil goruntulemelerine gore siralaniyor, eski kayitlari ve profil degisikliklerinden onceki ad/adres bilgisini gosterebiliyordu.
+- Duzeltme:
+   - Ranking artik yalnizca son 24 saatteki gercek profil goruntulemelerini siraliyor.
+   - Liste goruntulenmeleri ranking zamanini yenilemiyor.
+   - Ranking API, doktor detay ve liste sayfalariyla ayni custom-profile merge mantigini kullaniyor; kayitli yeni ad/adres gorunuyor.
+   - Ana sayfa etiketi "Letzte 24 Stunden" olarak netlestirildi.
+- Dosyalar: lib/doctorCommunity.ts, app/api/doctors/top-viewed/route.ts, components/landing/LandingPage.tsx
 
 ## 1) Proje Ozeti
 - Proje: TerminBoerse.at
@@ -278,6 +287,15 @@ Not:
    - `npm run build` basarili (Next.js 16.3.0, tum route'lar derlendi).
 - Production deploy:
    - Deployment: https://terminboerse-2n2mrncfa-ilhanyalcin3307s-projects.vercel.app
+
+## 22) Son Session Delta (2026-08-17) - Arztprofil Admin-Speicherung
+- Root cause: Arztbereich-Profiländerungen wurden bisher nur in `localStorage` gespeichert; öffentliche Suche und Detailseite lasen weiterhin ausschließlich `data/doctors.json`.
+- Profil-Update-API ergänzt: `app/api/arztbereich/profile/update/route.ts`
+- Admin/doctor profil override wird über `arzt_custom_profiles` bzw. KV/in-memory fallback gespeichert.
+- Öffentliche Arztsuche und Detailseite mergen gespeicherte Overrides mit dem OGD-Bestand.
+- Gleiche `doctorId` wird in der Adminsuche dedupliziert.
+- Validierung: `npx tsc --noEmit` und `git diff --check` erfolgreich.
+- `npm run lint` enthält bereits bestehende, task-fremde Fehler in Login-Routes und React-Effect-Regeln.
    - Alias: https://www.terminboerse.at
 
 ## 22) Kalan Onerilen Minik Kontrol Listesi
@@ -393,3 +411,364 @@ Not:
 - Not:
    - Kullanici ara verdi; geri donuste ilk hedef sadece bu bug'i kapatmak.
    - Yeni ozellik yok, sadece runtime truth ile sorunu bitirme odagi.
+
+## 26) Session Delta (2026-08-13) - Meistgesuchte Ärzte (Top-5 Live Ranking)
+- Istek: Landing sayfada `Freie Termine in den nächsten 3 Tagen` bolumunun hemen ustune, en cok goruntulenen 5 doktoru gosteren canli bir ranking eklendi. Alev/flame ikon bilinçli kullanilmadi, `TrendingUp` (lucide-react) tercih edildi.
+- Yeni kod:
+   - `lib/doctorCommunity.ts`: `getTopViewedDoctorIds(limit)` eklendi.
+   - `app/api/doctors/top-viewed/route.ts`: top-5 doktoru isim/branş/bölge ile donen yeni endpoint.
+   - `components/landing/LandingPage.tsx`: client-side fetch + 5 kartlik ranking bolumu (veri yoksa bolum otomatik gizleniyor).
+- Kritik root-cause bulgusu: View sayaçlari (`profileViews`/`listImpressions`) production'da **Vercel KV hic konfigure edilmemis** oldugu icin sadece process-memory'de tutuluyordu ve her cold start/istekte sifirlaniyordu. Bu yuzden ranking hep bos gorunuyordu.
+   - Kalici cozum: Sayaç depolama katmani Supabase'e tasindi (proje zaten Supabase kullaniyor, KV hicbir zaman set edilmemisti).
+   - Yeni tablo: `supabase/migrations/20260813_doctor_view_counters.sql` (`doctor_view_counters`: doctor_id, profile_views, list_impressions, updated_at).
+   - `lib/doctorCommunity.ts` icinde `hasSupabaseConfig()` -> Supabase varsa oncelikli, yoksa eski KV/in-memory fallback korunuyor (geriye donuk uyumluluk icin).
+- Onemli davranis notu: Profil goruntuleme sayaci sadece **POST** `/api/doctor-community/[doctorId]` cagrisinda (`event: "view"`) artiyor; GET sadece okuma yapiyor, sayaci artirmiyor.
+- Dogrulama (production'da manuel test edildi):
+   - `POST /api/doctor-community/ARZTOGD.20467685` `{"event":"view"}` -> `viewsCount: 1`
+   - `GET /api/doctors/top-viewed` -> ayni doktoru dondurdu.
+   - Test verisi 1 adet gercek olmayan view birakti; kullanici isterse Supabase Table Editor'den `doctor_view_counters` tablosunda `ARZTOGD.20467685` satirini silebilir (opsiyonel, zararsiz).
+- Kullanicinin yapmasi gereken tek adim (tamamlandi): Supabase SQL Editor'de migration SQL'i calistirildi, tablo canlida mevcut ve dogrulandi.
+- Deploy edilen commitler: `37002b1` (ranking UI), `a4ba560` (Supabase persistence fix). Son production alias: https://www.terminboerse.at
+- Sonraki oturumda devam noktasi: Ozellik tamamlandi ve dogrulandi, ek is bekleniyor degil. Kullanici molaya cikti, "devam edecegiz" dedi -- yeni talep gelene kadar baska degisiklik yapilmadi.
+
+## 27) Planlanan Is - Admin Dashboard Yenilemesi (Kullanici "Basla" Demeden Uygulama Yapma)
+
+### Hedef
+- Mevcut teknik sekme yapisini operasyon odakli bir admin paneline donusturmek.
+- Basvuru onayi, doktor-hesap eslestirmesi, yonetilen profiller ve doktor detay yonetimini birbirinden net ayirmak.
+- Mevcut onayli doktorun hesabi, profil duzenleme yetkisi ve manual slot akisi kesintisiz calismaya devam etmeli.
+
+### Mevcut Sorunlar
+- `Freischaltungen` ekraninda talep edilen ve eslesen doktor gorunuyor; ancak admin doktoru ad/adres/uzmanlik ile arayip secerek eslestiremiyor.
+- `Zuordnung bearbeiten` mevcut durumda yalnizca doktor ID bilgisine indirgendi; admin icin anlamli profil onizlemesi veya secim akisi yok.
+- `Verwaltete Profile` merkezi operasyon listesi degil; secili doktorun `Profil / Termine / Bewertungen` detay sekmelerine karisiyor.
+- Profil degisiklikleri icin kritik alanlarda admin inceleme/onay kuyrugu ve audit gecmisi yok.
+
+### Guvenli Uygulama Prensipleri
+- Mevcut Supabase hesap -> doktor ID eslestirmeleri korunacak; veri migrasyonu veya toplu reset yapilmayacak.
+- Yeni eslestirme arayuzu sadece yeni basvurularda veya admin bilincli olarak `Eşleşmeyi değiştir` dediginde kullanilacak.
+- Hesap kaldirma yerine once `pasiflestir` uygulanacak; public doktor kaydi silinmeyecek.
+- Uygulama oncesi veri kontrolu: her aktif hesap icin e-posta -> doktor ID -> doktor kaydi eslesmesi dogrulanacak.
+- Ilk gercek doktor (ARZTOGD.20468871) ile login, profil duzenleme ve manual slot regresyon testi yapilacak.
+
+### Sürüm 1 - Operasyon Temeli (Tahmini 3-4 Is Gunu)
+1. `Freischaltungen / Başvurular`
+   - Doktor adi, uzmanlik ve adres ile arama yapilabilen gercek eslestirme secicisi.
+   - Talep edilen doktor ve secilen doktor icin profil onizlemesi.
+   - `Onayla`, `Reddet`, `Düzeltme iste` aksiyonlari.
+2. Merkezi `Doktorlar / Yönetilen Profiller` listesi
+   - Sutunlar: doktor adi, uzmanlik, adres, hesap e-postasi, aktif/pasif durum, profil doluluk, son giris, son profil degisikligi, acik slot sayisi.
+   - Filtreler: aktif/pasif, eksik profil, slotu olmayan, uzun suredir giris yapmayan, onay bekleyen.
+   - Satir aksiyonlari: `Profili aç`, `Eşleşmeyi değiştir`, `Yönetimi durdur`, `Hesabı devre dışı bırak`.
+3. Secili doktor detay ekrani
+   - `Profil / Termine / Bewertungen / Konto ve erişim` alt sekmeleri.
+   - Mevcut `Profil / Termine / Bewertungen` burada kalacak; ana admin navigasyonundan ayrilacak.
+4. Temel profil doluluk ve aktivite verisi
+   - Profil yuzdesi ve eksik alanlar.
+   - Son profil degisikligi, son slot yayini, son giris icin veri modeli/ekran altyapisi.
+
+### Sürüm 2 - Kalite Kontrolü (Tahmini 2-4 Is Gunu)
+1. `Profil Değişikliği İnceleme` kuyrugu
+   - Kritik alanlarda eski/yeni deger karsilastirmasi: isim, uzmanlik, adres, telefon, e-posta, web sitesi.
+   - `Onayla`, `Reddet`, `Notla geri gönder` akisi.
+   - Onaylanana kadar public profilin son dogrulanmis bilgiyi gostermesi.
+2. Audit gecmisi
+   - Onaylayan admin, tarih/saat, degisen alanlar ve red/düzeltme notlari.
+3. Operasyon ozeti
+   - Aktif doktor, bekleyen basvuru, eksik profil, son 7 gun slot yayinlamayan doktor ve takvim baglanti durumu.
+
+### Dogrulama ve Canliya Alma
+- Her dilim sonrasinda: `npm run lint`, `npm run build`, mevcut onayli doktorla login/profil/slot smoke testi.
+- Sürüm 1 once preview ortaminda kontrol edilip sonra production'a alinacak.
+- Sürüm 2, Sürüm 1 production'da stabil olduktan sonra ayri deploy edilecek.
+- Toplam tahmin: Sürüm 1 + Sürüm 2 ile 5-8 is gunu; mevcut sistemin bozulmasi beklenmez, ancak her asamada regresyon testi zorunlu.
+
+## 28) Planlanan Is - Yeni Hasta Kabul Durumu (Kullanici "Yap" Demeden Uygulama Yapma)
+
+### Hedef
+- Hastalarin yeni hasta kabul eden doktorlari arama sonucunda dogrudan bulabilmesi.
+- Doktorun profil ayarindaki veri, liste filtreleri, kart rozeti ve detay profilinde tek kaynak olarak tutarli kullanilmali.
+
+### Uygulama Karari
+1. Veri modeli uc durumlu olmali:
+   - `Ja, neue Patienten willkommen`
+   - `Derzeit keine neuen Patienten`
+   - `Keine Angabe`
+2. `/arzt` arama sayfasina filtre ekle:
+   - Checkbox/toggle etiketi: `Nur Ärzte, die neue Patienten aufnehmen`.
+   - Yalnizca ilk durumdaki doktorlari gosterir.
+3. Arama sonucundaki kucuk doktor kartina, yalnizca ilk durumda yesil rozet ekle:
+   - `Neue Patienten willkommen`
+   - `Derzeit keine neuen Patienten` icin negatif rozet gostermemek; gerekirse detay profilde not olarak birakmak.
+4. Doktor detay sayfasinda mevcut `Neue Patienten` bilgisini gorunur, tutarli bir durum rozeti ile sunmak.
+5. Ana sayfada ayri liste ilk asamada eklenmeyecek.
+   - Yeterli sayida aktif doktor olustugunda opsiyonel `Neue Patienten willkommen` secili liste degerlendirilebilir.
+
+### Dogrulama
+- Doktor panelinden uc durumu kaydetme testi.
+- API filtre testi ve `/arzt` sonucunda dogru doktor sayisi.
+- Kart/detay ekraninda rozet tutarliligi.
+- Mevcut doktorlar icin `Keine Angabe` geriye donuk uyumluluk kontrolu.
+
+## 29) Planlanan Is - Doktor Hesap Ayarlari ve Guvenlik (Kullanici "Yap" Demeden Uygulama Yapma)
+
+### Problem
+- `Kundenkonto > Profil` mevcut durumda isim ve e-postayi sadece gosterebiliyor; hesap sahibi bunlari duzenleyemiyor.
+- Sifre degistirme ve sifre sifirlama akisi yok.
+- Public doktor profilinin iletisim e-postasi ile giris e-postasi birbirinden ayrilmali.
+
+### Hedef Akis
+1. Arztbereich doktor detayinda `Konto & Sicherheit` alt sekmesi ekle.
+2. Doktorun kendisi icin:
+   - Giris e-postasini goruntuleme ve guvenli degistirme.
+   - Sifre degistirme: mevcut sifre, yeni sifre, yeni sifre tekrar.
+   - `Şifremi unuttum` / e-posta tabanli reset akisi.
+   - Aktif oturumdan cikis.
+3. Public profil e-postasi ayri kalir; public iletisim bilgisi degisikligi giris kimligini degistirmez.
+4. Admin `Konto & erişim` gorunumunde:
+   - Hesabi pasiflestirme/yeniden aktiflestirme.
+   - Erisimi kaldirma.
+   - Parolayi gormeden, gerekirse guvenli reset e-postasi tetikleme.
+5. Guvenlik:
+   - Parola asla istemciye veya admin ekranina donmez.
+   - E-posta/parola degisikligi sonrasinda oturum yenileme veya diger oturumlari sonlandirma karari netlestirilir.
+   - Degisiklikler audit kaydina yazilir.
+
+### Oncelik ve Dogrulama
+- Ilk gercek doktor hesabinin aktif kullanimi nedeniyle yuksek oncelik.
+- Uygulama sonrasi: e-posta degistirme, mevcut sifreyle degistirme, hatali sifre, sifre reseti, eski/yeni giris bilgileri ve pasif hesap regresyon testleri.
+
+## 30) Planlanan Is - Leistungen ile Doktor Aramasi (Kullanici "Yap" Demeden Uygulama Yapma)
+
+### Problem ve Hedef
+- Doktorlar profilinde `Leistungen` ekleyebiliyor ancak hasta aramasi esas olarak isim, uzmanlik, adres ve bezirk bilgisini kullaniyor.
+- Hizmet odakli aramalarin (ornek: `HIV PrEP`, `Reisemedizin`, `Vorsorgeuntersuchung`, `sexuelle Gesundheit`) ilgili doktoru bulmasi saglanmali.
+
+### Uygulama Karari
+1. `/api/doctors` arama indexine `services.title` ve `services.description` alanlarini ekle.
+2. Mevcut normalize/tokenized arama davranisini bu alanlarda da kullan:
+   - `PrEP` / `HIV-PrEP`, umlaut ve yazim farklari tutarli eslesmeli.
+3. Sonuc kartinda arama hizmet alanindan eslestiyse kucuk bir satir/rozet goster:
+   - `Passende Leistung: Reisemedizin`
+4. Doktor detay sayfasinda Leistungen bolumunun public gorunurlugu kontrol edilmeli; yoksa eklenmeli.
+5. Ilk asamada ayri `Leistung` filtresi eklenmeyecek; serbest metin arama yeterli.
+
+### Dogrulama
+- Gercek profil hizmetleriyle API arama testleri: `HIV PrEP`, `Reisemedizin`, `Vorsorge`.
+- Eslestigi halde isim/uzmanlik/adreste gecmeyen hizmetin sonucu getirdigi kontrol edilir.
+- Karttaki eslesen hizmet etiketi ve public detay profilinin tutarliligi kontrol edilir.
+
+## 31) Planlanan Is - Talep Formu Uzerinden Doktora Aracili Iletim (Kullanici "Yap" Demeden Uygulama Yapma)
+
+### Niyet
+- Hasta, doktora dogrudan e-posta adresi gormeden talep birakabilsin.
+- Talep, sistem tarafindan doktora iletilsin; hem olculen lead akisi hem de doktorlar icin reklam/deger yaratilsin.
+
+### Uygulama Karari (MVP)
+1. Hasta tarafi
+   - Doktor karti/detayinda `Talep gönder` aksiyonu.
+   - Form alanlari: ad-soyad, iletisim (e-posta/telefon), konu, talep detayi, tercih edilen zaman.
+2. Sistem davranisi
+   - Talep once sistemde lead kaydi olarak tutulur.
+   - Sonra doktorun iletisim kanalina (e-posta) sistem araciligiyla iletilir.
+   - Doktora gelen iletide kaynak/lead id bilgisi bulunur.
+3. E-posta kaynak modeli
+   - `verified_doctor_email`: doktor tarafindan dogrulanmis e-posta (canli iletim icin birincil kaynak).
+   - `candidate_doctor_email`: dis kaynaktan gelen aday e-posta (dogrulanmadan canli iletime acilmaz).
+4. Dashboard
+   - Doktor panelinde `Gelen Talepler` bolumu.
+   - Admin tarafinda iletim basari/hatasi ve tekrar gonderim takibi.
+
+### Uyum ve Guvenlik
+- Form metninde acik bilgilendirme: talebin ilgili saglik kurulusuna iletilecegi.
+- Dis kaynak e-postalarin kullaniminda ToS/robots ve DSGVO uyum kontrolu tamamlanmadan toplu canli kullanim yok.
+- Public profildeki iletisim e-postasi ile giris e-postasi ayri veri alanlari olarak korunur.
+
+### Is Modeli / Ticarilestirme (Sonraki Faz)
+- Ucretsiz temel lead iletimi.
+- Ucretli paketler: oncelikli gorunum, hizli bildirim, donusum raporlari, otomatik cevap sablonlari.
+
+### Dogrulama
+- Uctan uca test: form -> lead kaydi -> doktor e-postasina iletim -> dashboard gorunurlugu.
+- Hata senaryolari: gecersiz e-posta, iletim hatasi, duplicate talep, rate-limit.
+
+## 32) Session Delta (2026-09-01) - Admin Dashboard Yenilemesi, Sürüm 1 Temeli
+- Merkezi `Verwaltete Profile` sekmesi operasyon listesine dönüştürüldü.
+   - Yeni admin API: `app/api/arztbereich/managed-profiles/route.ts`
+   - Aktif doktor hesabı, eşleştirilen profil, branş/adres ve sonraki 3 gündeki boş slot sayısı tek listede gösteriliyor.
+   - Filtreler: tümü, aktif, inaktif, boş slotu olmayan.
+   - `Profil öffnen` mevcut profil editörüne güvenli biçimde geçiyor.
+- Hesap yönetimi eklendi:
+   - Yeni admin API: `app/api/arztbereich/managed-profiles/status/route.ts`
+   - Hesap silinmeden aktif/pasif yapılabiliyor; yalnız admin token ile erişilebilir.
+- `Freischaltungen > Zuordnung bearbeiten` iyileştirildi:
+   - Ham doktor ID yazımı yerine ad, uzmanlık veya bezirk ile arama ve profil önizlemeli seçim eklendi.
+   - Mevcut eşleştirme verileri korunuyor; yalnız admin seçip kaydederse değişiyor.
+- Doğrulama: `npx tsc --noEmit` ve `npm run build` başarılı.
+- Kalan Sürüm 1 işleri (uygulanmadı): merkezi listede profil doluluk/son giriş/son profil değişikliği alanları için kalıcı activity veri modeli ve gerekirse daha ayrıntılı doktor detay ekranı.
+
+## 33) Session Delta (2026-09-01) - Admin Arztliste ve Güvenli Profil Kaldırma
+- Admin dashboard'a yeni `Arztliste` sekmesi eklendi.
+   - Tüm OGD ve custom doktor profilleri 50'şerli sayfalama ve ad/branş/bezirk/adres araması ile görüntüleniyor.
+   - Her kaydın OGD veya kendi oluşturulmuş profil olduğu, ayrıca public veya gizli olduğu açıkça gösteriliyor.
+- OGD profilleri kalıcı olarak silinmez; admin `Ausblenden` ile public görünürlükten kaldırabilir ve `Wiederherstellen` ile geri açabilir.
+   - Gizlenen profil `/arzt` listesinden, profil URL'sinden, sitemap'ten ve public boş-slot vitrininden çıkar.
+   - Böylece OGD kaynak güncellendiğinde kaydın geri gelmesi veya Google'da gereksiz 404 oluşması engellenir.
+- Yalnız `custom-*` profiller için `Endgültig löschen` eklendi.
+   - Onay penceresi vardır.
+   - Manual slotlar, scheduling/calendar verileri, görüntüleme sayacı, hesap-doktor eşleştirmesi, gizleme kaydı ve custom profil kaydı birlikte temizlenir.
+- Yeni endpointler:
+   - `app/api/arztbereich/doctor-list/route.ts`
+   - `app/api/arztbereich/doctor-list/action/route.ts`
+- Yeni migration (production'a geçmeden önce Supabase SQL Editor'de çalıştırılmalı):
+   - `supabase/migrations/20260901_hidden_doctor_profiles.sql`
+   - Tablo: `arzt_hidden_profiles`
+- Doğrulama: `npx tsc --noEmit` ve `npm run build` başarılı.
+
+## 34) Session Delta (2026-09-01) - Arztliste Profil Kalitesi ve Aktivite
+- `Arztliste` artık her doktor satırında operasyon için gerekli sinyalleri gösteriyor:
+   - Profil doluluk yüzdesi (isim, branş, bezirk, adres, telefon, e-posta, web sitesi, Über mich).
+   - Doktor hesabının son giriş zamanı; hiç giriş yoksa `Noch nie`.
+   - Son manual slot yayın zamanı; hiç slot yoksa `Noch keiner`.
+- `Details` ile açılır satır görünümü eklendi:
+   - Profil ID, hesap e-postası/aktiflik durumu ve eksik profil alanları.
+   - `Profil bearbeiten` mevcut admin profil editörüne geçer.
+- Son giriş bilgisi yalnız server-side Supabase Admin API ile okunur; public endpointlerde sunulmaz.
+- Doğrulama: `npx tsc --noEmit`, `npm run build` ve editor diagnostics başarılı.
+
+## 35) Session Delta (2026-09-01) - Admin Operasyon Özeti
+- Admin dashboard üstüne tıklanabilir operasyon sayacı eklendi:
+   - Aktif doktor hesapları.
+   - Açık freischaltung başvuruları.
+   - Eksik profil bilgisi bulunan yönetilen profiller.
+   - Açık slotu olmayan yönetilen profiller.
+   - Public görünümden gizlenmiş profil sayısı.
+- Yeni admin-only endpoint: `app/api/arztbereich/operations-summary/route.ts`.
+- Kalite ve slot sayaçları tüm OGD havuzunu değil, yalnız aktif doktor hesabına bağlı yönetilen profilleri kapsar; böylece günlük admin aksiyonu için anlamlı kalır.
+- Sayaçlar ilgili sekmeye yönlendirir (`Freischaltungen`, `Verwaltete Profile`, `Arztliste`).
+- Doğrulama: `npx tsc --noEmit`, `npm run build` ve editor diagnostics başarılı.
+
+## 36) Session Delta (2026-09-01) - Doktor Konto & Sicherheit
+- Doktor dashboard'una `Konto & Sicherheit` sekmesi eklendi.
+   - Mevcut parola doğrulamasıyla giriş parolası değiştirilebilir.
+   - Mevcut parola doğrulamasıyla giriş e-postası değiştirilebilir.
+   - Public doktor profilindeki iletişim e-postası, giriş e-postasından bağımsız kalır.
+   - E-posta veya parola değişiminden sonra Arztbereich session localStorage'dan temizlenir ve yeniden giriş istenir.
+- Güvenli parola reset akışı eklendi:
+   - Doktor kendi hesabına tek kullanımlık Supabase reset e-postası gönderebilir.
+   - `/login?recovery=doctor` recovery oturumunu algılar, yeni parolayı kaydeder ve Arztbereich'e geri yönlendirir.
+   - Admin `Verwaltete Profile` listesinden aktif doktor hesabına reset e-postası gönderebilir; parola hiçbir noktada admin'e gösterilmez.
+- Yeni endpoint: `app/api/arztbereich/account-security/route.ts`.
+- Supabase Authentication URL Configuration içinde `https://www.terminboerse.at/login?recovery=doctor` redirect URL olarak izinli olmalı; aksi halde reset e-postası dönüşü çalışmaz.
+- Doğrulama: `npx tsc --noEmit`, `npm run build` ve editor diagnostics başarılı.
+
+## 37) Session Delta (2026-09-01) - Meistgesuchte Ärzte Günlük Cache
+- Ana sayfadaki `Meistgesuchte Ärzte` listesi tekrar aktifleştirildi; `Freie Termine in den nächsten 3 Tagen` bölümünün üstünde gösterilir.
+- Ranking yalnız profil görüntülemelerine göre hesaplanır; gizlenmiş profiller listeden çıkarılır.
+- `app/api/doctors/top-viewed/route.ts` yanıtı Vercel CDN'de 24 saat cache'lenir (`s-maxage=86400`, 1 saat stale-while-revalidate).
+   - İlk istekte Supabase ranking sorgusu yapılır, sonraki ana sayfa ziyaretleri günlük cached snapshot'ı kullanır.
+   - Yeni tablo veya cron gerekli değildir; yük çok düşük tutulur.
+- `components/landing/LandingPage.tsx` endpointi force-cache ile çağırır; veri yoksa bölüm otomatik gizlenir.
+- Doğrulama: `npx tsc --noEmit` ve `npm run build` başarılı.
+
+## 38) Session Delta (2026-09-01) - SEO Branş Landing Sayfaları
+- Google organik görünürlüğü için kalıcı, statik branş + Wien landing URL'leri eklendi:
+   - `/arzttermin-wien/hausarzt`
+   - `/arzttermin-wien/hautarzt`
+   - `/arzttermin-wien/frauenarzt`
+   - `/arzttermin-wien/zahnarzt`
+   - `/arzttermin-wien/kinderarzt`
+- Her URL kendi title/description/canonical/OpenGraph metadata'sına, breadcrumb JSON-LD şemasına ve branşa uygun özgün giriş metnine sahip.
+- Sayfalar mevcut gerçek `/api/doctors` filtresini kullanır; oluşturma anında statik HTML (SSG) üretilir.
+- `sitemap.xml` içine eklendiler ve ana sayfadaki `Beliebte Suchen in Wien` bölümü query parametreleri yerine bu kalıcı URL'lere doğrudan internal link verir.
+- Doğrulama: `npx tsc --noEmit` ve `npm run build` başarılı; 5 URL SSG olarak oluşturuldu.
+
+## 39) Session Delta (2026-09-01) - SEO Ratgeber İçerikleri
+- Tıbbi teşhis/tedavi iddiası içermeyen, randevu süreci ve yerel arama niyetine odaklı üç özgün Almanca rehber eklendi:
+   - `/ratgeber/arzttermin-wien`
+   - `/ratgeber/arzttermin-kurzfristig`
+   - `/ratgeber/facharzttermin-wien`
+- Her rehberin kendine özgü title/description/canonical/OpenGraph metadata'sı, dört uygulama adımı, FAQ bölümü + FAQPage JSON-LD ve breadcrumb JSON-LD'si bulunur.
+- Rehberler gerçek doktor listesi, boş-slot alanı ve ilgili branş landing sayfalarına internal link verir.
+- Ana sayfaya `Ratgeber: Arzttermine in Wien` bölümü eklendi ve üç rehbere crawl edilebilir normal link verildi.
+- Sitemap kapsamına eklendiler; Next build'te üçü SSG olarak üretildi.
+- Doğrulama: `npx tsc --noEmit` ve `npm run build` başarılı.
+
+## 40) Session Delta (2026-09-01) - Production ve Mola Durumu
+- Son production deploy: `https://terminboerse-bf4lyw1k7-ilhanyalcin3307s-projects.vercel.app`
+   - Alias: `https://www.terminboerse.at`
+   - Bu deploy, üç SEO Ratgeber sayfasını, sitemap güncellemesini ve ana sayfadaki rehber linklerini içerir.
+- `Meistgesuchte Ärzte` ranking production'da ayrıca düzeltildi ve deploy edildi:
+   - Son ranking deploy: `https://terminboerse-7mhvrcjz3-ilhanyalcin3307s-projects.vercel.app`
+   - Root cause: yalnız son 24 saatte güncellenen sayaçlar filtrelendiği için ranking boş dönüyordu.
+   - Çözüm: toplam gerçek profil görüntülemeleri sıralanır; endpoint sonucu Vercel CDN'de 24 saat cache'lenir.
+   - Canlı kontrol: `/api/doctors/top-viewed` 5 doktor döndürdü.
+- Doktor `Konto & Sicherheit` özellikleri de production'a alındı:
+   - Şifre/e-posta değişimi ve doktor/admin tetiklemeli reset e-postası mevcut.
+   - Açık konfigürasyon: kullanıcı Supabase'e henüz giriş yapamadığı için Supabase Authentication Redirect URLs içine `https://www.terminboerse.at/login?recovery=doctor` henüz eklenemedi.
+   - Bu ayar eklenene kadar reset e-postası akışı hedef sayfaya dönmeyebilir; diğer şifre/e-posta değişimi çalışır.
+- Mola anındaki sonraki olası odaklar:
+   1. Doktor paneli: `Neue Patienten willkommen` üç durumlu veri + `/arzt` filtresi/kart rozeti.
+   2. Doktor profilindeki `Leistungen` alanlarını `/api/doctors` aramasına dahil etme.
+   3. Yeni branş rehberleri: Hautarzttermin, Frauenarzttermin, Zahnarzttermin Wien.
+   4. Doktor detail sayfalarında gerçek veriye dayalı `Physician`/`MedicalClinic` schema.
+   5. Google Places API konusu şimdilik ertelendi. Olası güvenli model: yalnız yönetilen doktorlarla, admin onaylı manuel eşleştirme pilotu; Google puanı, yorum sayısı ve çalışma saatleri için `place_id` saklanır. Tüm OGD listesini otomatik eşleştirme veya Google yorum metinlerini kopyalama yapılmayacak.
+
+## 41) Session Delta (2026-09-02) - Slug Redirect Fix + Profil Sayfası Benzersizleştirme
+- Kritik bug bulundu ve düzeltildi: doktor profili düzenlenince (isim/branş/bezirk değişince) SEO slug'ı değişiyor, eski indekslenmiş URL kalıcı olarak 404 veriyordu.
+  - `lib/doctors.ts` içindeki `findDoctorBySeoSlug` artık tam eşleşme bulamazsa kalıcı doktor ID'sinden (slug sonundaki `arztogd-XXXX`/`custom-XXXX`) fallback araması yapıyor.
+  - `app/arzt/[id]/page.tsx` artık eski slug ile gelen istekleri güncel kanonik URL'e `permanentRedirect` (308) ile yönlendiriyor.
+  - Canlıda doğrulandı: `dr-oliver-schneeberger-...-09-bezirk-...` artık 404 değil, 308 ile doğru URL'e yönleniyor.
+- Doktor profil sayfalarındaki birebir tekrar eden şablon metinleri azaltıldı (Google'ın "gecrawlt, indekslenmedi" kararına dogrudan bagli bir sorun):
+  - Yeni yardımcı: `lib/nearbyPlaces.ts` → `getNearestPharmacies(lat, lng, limit)`. Mevcut `data/APOTHEKEOGD.json` + doktorun koordinatlarıyla haversine mesafe hesaplayıp en yakın 3 eczaneyi (isim, adres, mesafe) listeliyor. Doktor girdisi gerektirmiyor.
+  - "Apotheken in der Nähe" bölümü canlıda doğrulandı (Dr. Daniel Dugandzic profilinde 3 eczane, 190m/410m/420m).
+  - Boş profil alanları (`Über mich`, `Leistungen`, `Versicherung`, `Neue Patienten`) artık sabit "Noch keine Angaben vorhanden" yerine branş+bezirk enjekte edilmiş cümle gösteriyor.
+  - "Anreise & Parken" giriş metnine adres/bezirk eklendi.
+  - Booking-durum metinleri (`getBookingStatusLabel`) artık doktor adını içeren iki farklı varyanta (`short`/`detailed`) ayrıldı; aynı sayfada aynı cümle iki kez birebir tekrar etmiyor.
+- Doğrulama: `npx tsc --noEmit`, `npm run build` başarılı; production'da Dr. Daniel Dugandzic profili üzerinden eczane mesafesi, branş/bezirk enjekte edilmiş boş alan metinleri ve kişiselleştirilmiş booking metni canlıda doğrulandı.
+- Deploy: `terminboerse-93q5cwwhp-ilhanyalcin3307s-projects.vercel.app` (alias: www.terminboerse.at)
+- Kalan iş: `getDoctorWorkingHours` içindeki varsayılan (doktor saatleri girilmemişse) Sprechzeiten metni hâlâ sabit; sıradaki küçük iyileştirme adayı.
+
+## 42) Session Delta (2026-09-02) - Gerçek Toplu Taşıma + Otopark Verisi
+- Wien'in resmi açık veri WFS servisinden (data.wien.gv.at) iki yeni veri seti indirilip repoya eklendi:
+  - `data/HALTESTELLENOGD.json` (`ogdwien:OEFFHALTESTOGD`, 10.404 durak, isim + hat numaraları)
+  - `data/GARAGENOGD.json` (`ogdwien:GARAGENOGD`, 373 otopark, isim/adres/işletmeci/Park&Ride)
+- `lib/nearbyPlaces.ts` genişletildi:
+  - `getNearestTransitStops(lat, lng, limit)`: en yakın duraklar, aynı durağın farklı yön kayıtları isim bazlı birleştirilip hatlar tekilleştiriliyor.
+  - `getNearestParkingGarages(lat, lng, limit)`: en yakın otoparklar.
+- `app/arzt/[id]/page.tsx`:
+  - "Öffentliche Verkehrsmittel" kartına en yakın 3 durak + hat numaraları eklendi.
+  - "Mit dem Auto" kartına en yakın otoparkın kısa özeti eklendi.
+  - "Parken" kartına en yakın 3 otoparkın tam listesi (isim, adres, işletmeci, mesafe) eklendi.
+- Bilinçli olarak eklenmedi: "Gürtel yakınında" gibi cadde/yol adı yakınlığı iddiaları. Güvenilir açık veri kaynağı bulunamadı, uydurma bilgi verilmedi.
+- Doğrulama: `npx tsc --noEmit`, `npm run build` başarılı; production'da Dr. Daniel Dugandzic profilinde gerçek durak/hat (`Linien 49, N49` vb.) ve otopark (`Karree Breitensee`, ~300m) canlı doğrulandı.
+- Deploy: `terminboerse-52bl1z86s-ilhanyalcin3307s-projects.vercel.app` (alias: www.terminboerse.at)
+
+## 43) Session Delta (2026-09-02) - Boş Alan Toparlama + Physician Schema
+- Doktor profilinde 4 ayrı "Noch keine Angaben vorhanden" kutusu tek bir özet kutusuna birleştirildi:
+  - Doldurulmuş alanlar (`Über mich`, `Leistungen`, `Versicherung`, `Neue Patienten`) normal kartlarında görünmeye devam ediyor.
+  - Boş olanlar tek kartta toplanıyor: `Noch nicht angegeben` başlığı + eksik alan isimleri + branş/bezirk enjekte edilmiş tek cümle.
+  - Kullanılmayan `EmptyProfileValue` bileşeni kaldırıldı.
+- Doktor sayfasına gerçek veriye dayalı `Physician` JSON-LD şeması eklendi (isim, uzmanlık, adres, koordinat, telefon, website).
+- Doğrulama: `npx tsc --noEmit`, `npm run build` başarılı; production'da Dr. Daniel Dugandzic profilinde tek özet kutusu ve `Physician` şeması canlı doğrulandı.
+- Deploy: `terminboerse-1eagvq4bv-ilhanyalcin3307s-projects.vercel.app` (alias: www.terminboerse.at)
+
+## 45) Session Delta (2026-09-02) - Aynı Adresteki Çift Doktor Kayıtlarını Otomatik Birleştirme
+- `lib/doctors.ts` içindeki `normalizeDoctorsData` fonksiyonu güncellendi.
+- İsim ve adres bazında tam eşleşen doktor kayıtları tek bir profil altında otomatik olarak birleştiriliyor.
+- Farklı uzmanlık alanları birleştirilerek tek profilde (ör. `Innere Medizin & Hausarzt / Allgemeinmedizin`) gösteriliyor.
+- Telefon, e-posta, web sitesi ve randevu linki gibi eksik alanlar diğer kayıttan tamamlanıyor.
+- Doğrulama: `npx tsc --noEmit` ve `npm run build` başarılı.
+
+## 44) Session Delta (2026-09-02) - Harici Direkt Online-Termin Linki (meineakte.at, Doctena, Latido)
+- Doktor profil veri modeline opsiyonel `bookingUrl` (harici online randevu linki) eklendi (`lib/doctors.ts`, `lib/arztbereichAdminStore.ts`).
+- Arztbereich profil editörüne `Direkter Online-Termin Link (z. B. meineakte.at, Doctena, Latido)` alanı eklendi (`components/arztbereich/ArztDashboardLite.tsx`, `app/api/arztbereich/profile/update/route.ts`). Profil seçildiğinde local storage/kayıtlı `bookingUrl` verisinin form alanına yüklenmesi düzeltildi.
+- Doktor detay sayfasında (`app/arzt/[id]/page.tsx`):
+  - Harici link tanımlıysa yeşil `Direkte Online-Terminbuchung möglich` bilgi kutusu ve `Jetzt Online-Termin buchen` butonu gösteriliyor.
+  - `DoctorProfileActions` aksiyon çubuğunda yeşil `Online-Termin buchen` butonu görüntüleniyor (`components/arzt/DoctorProfileActions.tsx`).
+  - `Physician` schema'sı içine `sameAs` array ile ekleniyor.
+- Arama/dizin kartlarında (`components/arzt/ArztDirectory.tsx`):
+  - Harici randevu linki olan doktorlarda `🟢 Online-Termin möglich` rozeti render ediliyor.
+  - Kart alt aksiyon butonlarına yeşil `Online-Termin` butonu eklendi.
+- Supabase SQL migration eklendi: `supabase/migrations/20260902_doctor_profile_booking_url.sql`.
+- Doğrulama: `npx tsc --noEmit` ve `npm run build` başarılı.
