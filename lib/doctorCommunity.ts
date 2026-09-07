@@ -31,6 +31,7 @@ type DoctorViewCountersState = {
 const SUPABASE_TABLE = "doctor_view_counters";
 const STORE_KEY = "terminboerse:doctor-community:views:v1";
 const DEFAULT_VIEW_STATE: DoctorViewCountersState = { entries: [] };
+const LIVE_RANKING_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 let inMemoryViewState: DoctorViewCountersState = { ...DEFAULT_VIEW_STATE };
 
@@ -134,6 +135,11 @@ function normalizeCount(value: unknown) {
   return Math.floor(value);
 }
 
+function hasRecentProfileView(updatedAt: string) {
+  const timestamp = new Date(updatedAt).getTime();
+  return Number.isFinite(timestamp) && timestamp >= Date.now() - LIVE_RANKING_WINDOW_MS;
+}
+
 function getEntryByDoctorId(state: DoctorViewCountersState, doctorId: string): DoctorViewCountersEntry | null {
   const normalizedDoctorId = doctorId.trim();
   if (!normalizedDoctorId) {
@@ -181,13 +187,14 @@ async function bumpSupabaseCounters(doctorId: string, profileViewsDelta: number,
     listImpressions: 0,
     updatedAt: new Date(0).toISOString(),
   };
+  const isNewProfileViewWindow = profileViewsDelta > 0 && !hasRecentProfileView(current.updatedAt);
 
   const { error } = await client.from(SUPABASE_TABLE).upsert(
     {
       doctor_id: doctorId,
-      profile_views: current.profileViews + profileViewsDelta,
+      profile_views: isNewProfileViewWindow ? profileViewsDelta : current.profileViews + profileViewsDelta,
       list_impressions: current.listImpressions + listImpressionsDelta,
-      updated_at: new Date().toISOString(),
+      updated_at: profileViewsDelta > 0 ? new Date().toISOString() : current.updatedAt,
     },
     { onConflict: "doctor_id" },
   );
@@ -252,9 +259,11 @@ async function bumpViewCounters(doctorId: string, patch: { profileViewsDelta?: n
 
   const nextEntry: DoctorViewCountersEntry = {
     doctorId: normalizedDoctorId,
-    profileViews: current.profileViews + profileViewsDelta,
+    profileViews: profileViewsDelta > 0 && !hasRecentProfileView(current.updatedAt)
+      ? profileViewsDelta
+      : current.profileViews + profileViewsDelta,
     listImpressions: current.listImpressions + listImpressionsDelta,
-    updatedAt: new Date().toISOString(),
+    updatedAt: profileViewsDelta > 0 ? new Date().toISOString() : current.updatedAt,
   };
 
   if (index >= 0) {
@@ -268,10 +277,6 @@ async function bumpViewCounters(doctorId: string, patch: { profileViewsDelta?: n
 
 function getSeededComments(): DoctorComment[] {
   return [];
-}
-
-export async function trackDoctorProfileView(doctorId: string) {
-  await bumpViewCounters(doctorId, { profileViewsDelta: 1 });
 }
 
 export async function trackDoctorListImpressions(doctorIds: string[]) {

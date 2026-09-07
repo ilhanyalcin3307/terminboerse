@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  CalendarCheck,
   Globe,
   MapPin,
   Eye,
@@ -15,7 +16,7 @@ import {
 } from "lucide-react";
 import { DevAnalyticsPanel } from "@/components/analytics/DevAnalyticsPanel";
 import { trackEvent } from "@/lib/analytics";
-import { getDoctorSeoSlug, getGoogleMapsUrl, normalizeDoctorSearchText, type DoctorRecord } from "@/lib/doctors";
+import { getDoctorSeoSlug, getGoogleMapsUrl, getProviderTypeLabel, normalizeDoctorSearchText, type DoctorRecord } from "@/lib/doctors";
 
 const ALL_SPECIALTIES = "Alle Fachbereiche";
 const ALL_DISTRICTS = "Alle Bezirke";
@@ -277,7 +278,7 @@ export function ArztDirectory({
 
   const featuredSpecialties = useMemo(() => specialties.slice(1, 7), [specialties]);
 
-  function trackDoctorAction(doctor: DoctorRecord, action: "phone" | "website" | "route") {
+  function trackDoctorAction(doctor: DoctorRecord, action: "phone" | "website" | "route" | "booking_url") {
     trackEvent("doctor_action_clicked", {
       source: "arzt-directory",
       action,
@@ -444,7 +445,7 @@ export function ArztDirectory({
                   <p className="text-sm text-slate-600">{doctor.specialty}</p>
                 </div>
                 <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                  {doctor.providerType}
+                  {getProviderTypeLabel(doctor.providerType)}
                 </span>
               </div>
 
@@ -454,6 +455,12 @@ export function ArztDirectory({
                     <Eye className="h-3.5 w-3.5" />
                     {formatCompactCount(doctor.viewsCount)} Aufrufe
                   </span>
+                  {doctor.bookingUrl ? (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-900">
+                      <CalendarCheck className="h-3.5 w-3.5 text-emerald-700" />
+                      Online-Termin möglich
+                    </span>
+                  ) : null}
                 </div>
                 <p className="inline-flex items-start gap-2">
                   <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
@@ -472,6 +479,21 @@ export function ArztDirectory({
               </div>
 
               <div className="mt-5 grid gap-2 sm:grid-cols-3">
+                {doctor.bookingUrl ? (
+                  <a
+                    href={doctor.bookingUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      trackDoctorAction(doctor, "booking_url");
+                    }}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-bold text-white transition hover:bg-emerald-500"
+                  >
+                    <CalendarCheck className="h-4 w-4" />
+                    Online-Termin
+                  </a>
+                ) : null}
                 {doctor.phone ? (
                   <a
                     href={`tel:${doctor.phone.replace(/[^+\d]/g, "")}`}

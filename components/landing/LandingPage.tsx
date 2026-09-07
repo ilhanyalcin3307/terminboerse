@@ -43,7 +43,13 @@ type LeadEntry = {
 
 type SeoQuickLink = {
   label: string;
-  search: string;
+  href: string;
+};
+
+type GuideLink = {
+  label: string;
+  description: string;
+  href: string;
 };
 
 type FaqItem = {
@@ -70,10 +76,10 @@ type UpcomingDoctorSlotsPayload = {
 
 type TopViewedDoctorItem = {
   doctorId: string;
-  doctorName: string;
+  name: string;
   specialty: string;
   district: string;
-  profileViews: number;
+  slug: string;
 };
 
 type TopViewedDoctorsPayload = {
@@ -133,14 +139,18 @@ const fallbackCategories = [
 const ALL_SPECIALTIES = "Alle Fachbereiche";
 
 const seoQuickLinks: SeoQuickLink[] = [
-  { label: "Hausarzt 1100 Wien", search: "Hausarzt 1100 Wien" },
-  { label: "Zahnarzt 1030 Wien", search: "Zahnarzt 1030 Wien" },
-  { label: "Orthopädie Wien", search: "Orthopädie Wien" },
-  { label: "Augenarzt 1070 Wien", search: "Augenarzt 1070 Wien" },
-  { label: "Dermatologie 1060 Wien", search: "Dermatologie 1060 Wien" },
-  { label: "Kinderarzt 1220 Wien", search: "Kinderarzt 1220 Wien" },
-  { label: "HNO 1180 Wien", search: "HNO 1180 Wien" },
-  { label: "Gynäkologie 1090 Wien", search: "Gynäkologie 1090 Wien" },
+  { label: "Hausarzt in Wien", href: "/arzttermin-wien/hausarzt" },
+  { label: "Hautarzt in Wien", href: "/arzttermin-wien/hautarzt" },
+  { label: "Frauenarzt in Wien", href: "/arzttermin-wien/frauenarzt" },
+  { label: "Zahnarzt in Wien", href: "/arzttermin-wien/zahnarzt" },
+  { label: "Kinderarzt in Wien", href: "/arzttermin-wien/kinderarzt" },
+  { label: "Arztliste Wien", href: "/arzt" },
+];
+
+const guideLinks: GuideLink[] = [
+  { label: "Arzttermin in Wien finden", description: "Fachbereich, Bezirk und Kontaktwege gezielt nutzen.", href: "/ratgeber/arzttermin-wien" },
+  { label: "Kurzfristig einen Termin finden", description: "Praktische Schritte für eine zeitnahe Anfrage.", href: "/ratgeber/arzttermin-kurzfristig" },
+  { label: "Facharzttermin in Wien", description: "Suche und organisatorische Vorbereitung.", href: "/ratgeber/facharzttermin-wien" },
 ];
 
 const faqItems: FaqItem[] = [
@@ -440,9 +450,37 @@ export function LandingPage({
   }, [doctorNameQuery]);
 
   useEffect(() => {
-    const controller = new AbortController();
+    let isMounted = true;
+
+    async function loadTopViewedDoctors() {
+      try {
+        const response = await fetch("/api/doctors/top-viewed", { cache: "force-cache" });
+        if (!response.ok) {
+          return;
+        }
+        const payload = (await response.json()) as TopViewedDoctorsPayload;
+        if (isMounted && payload.ok && Array.isArray(payload.items)) {
+          setTopViewedDoctors(payload.items);
+        }
+      } catch {
+        if (isMounted) {
+          setTopViewedDoctors([]);
+        }
+      }
+    }
+
+    void loadTopViewedDoctors();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
 
     async function loadUpcomingSlots() {
+      const controller = new AbortController();
+
       try {
         const response = await fetch("/api/doctors/upcoming-slots", {
           method: "GET",
@@ -459,55 +497,27 @@ export function LandingPage({
           return;
         }
 
-        setUpcomingDoctorSlots(payload.items);
+        if (isMounted) {
+          setUpcomingDoctorSlots(payload.items);
+        }
       } catch (error) {
         if (error instanceof Error && error.name === "AbortError") {
           return;
         }
-        setUpcomingDoctorSlots([]);
+        if (isMounted) {
+          setUpcomingDoctorSlots([]);
+        }
       }
     }
 
     void loadUpcomingSlots();
+    const refreshIntervalId = window.setInterval(() => {
+      void loadUpcomingSlots();
+    }, 30000);
 
     return () => {
-      controller.abort();
-    };
-  }, []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-
-    async function loadTopViewedDoctors() {
-      try {
-        const response = await fetch("/api/doctors/top-viewed", {
-          method: "GET",
-          cache: "no-store",
-          signal: controller.signal,
-        });
-
-        if (!response.ok) {
-          return;
-        }
-
-        const payload = (await response.json()) as TopViewedDoctorsPayload;
-        if (!payload.ok || !Array.isArray(payload.items)) {
-          return;
-        }
-
-        setTopViewedDoctors(payload.items);
-      } catch (error) {
-        if (error instanceof Error && error.name === "AbortError") {
-          return;
-        }
-        setTopViewedDoctors([]);
-      }
-    }
-
-    void loadTopViewedDoctors();
-
-    return () => {
-      controller.abort();
+      isMounted = false;
+      window.clearInterval(refreshIntervalId);
     };
   }, []);
 
@@ -769,25 +779,21 @@ export function LandingPage({
         </section>
 
         {topViewedDoctors.length > 0 ? (
-          <section className="rounded-2xl border border-sky-200 bg-gradient-to-r from-sky-50 via-white to-sky-50 p-4 shadow-sm">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="flex items-center gap-1.5 text-sm font-semibold text-sky-700">
-                <TrendingUp className="h-4 w-4" />
+          <section className="rounded-2xl border border-sky-200 bg-sky-50 p-4 shadow-sm">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <p className="inline-flex items-center gap-2 text-sm font-semibold text-sky-950">
+                <TrendingUp className="h-4 w-4 text-sky-700" />
                 Meistgesuchte Ärzte
               </p>
-              <p className="text-xs text-slate-500">Live-Ranking</p>
+              <p className="text-xs text-sky-800">Aktualisiert täglich</p>
             </div>
-
-            <div className="grid gap-3 md:grid-cols-5">
-              {topViewedDoctors.map((item, index) => (
-                <Link
-                  key={item.doctorId}
-                  href={`/arzt/${encodeURIComponent(getDoctorSeoSlug({ id: item.doctorId, name: item.doctorName, specialty: item.specialty, district: item.district }))}`}
-                  className="rounded-xl border border-sky-200 bg-white p-3 transition hover:border-sky-400 hover:shadow-sm"
-                >
-                  <p className="text-xs font-semibold text-sky-600">#{index + 1}</p>
-                  <p className="mt-1 text-sm font-semibold text-slate-800">{item.doctorName}</p>
-                  <p className="mt-1 text-xs text-slate-500">{item.specialty} · {item.district}</p>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+              {topViewedDoctors.map((doctor, index) => (
+                <Link key={doctor.doctorId} href={`/arzt/${encodeURIComponent(doctor.slug)}`} className="rounded-xl border border-sky-200 bg-white p-3 transition hover:border-sky-400 hover:bg-sky-50">
+                  <p className="text-xs font-bold text-sky-700">#{index + 1}</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-900">{doctor.name}</p>
+                  <p className="mt-1 text-xs text-slate-600">{doctor.specialty}</p>
+                  <p className="text-xs text-slate-500">{doctor.district}</p>
                 </Link>
               ))}
             </div>
@@ -869,18 +875,31 @@ export function LandingPage({
           <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {seoQuickLinks.map((item) => (
               <Link
-                key={item.search}
-                href={`/arzt?search=${encodeURIComponent(item.search)}`}
+                key={item.href}
+                href={item.href}
                 className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-800 transition hover:-translate-y-0.5 hover:border-sky-300 hover:bg-white"
                 onClick={() => {
                   trackEvent("cta_clicked", {
                     source: "seo-quick-links",
                     action: "quick_search",
-                    search_term: item.search,
+                    search_term: item.label,
                   });
                 }}
               >
                 {item.label}
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        <section className="border-y border-slate-200 py-8 md:py-10">
+          <h2 className="text-2xl font-bold text-slate-900">Ratgeber: Arzttermine in Wien</h2>
+          <p className="mt-2 max-w-3xl text-sm text-slate-600">Praktische Informationen zur Suche und Terminorganisation in Wien.</p>
+          <div className="mt-5 grid gap-3 md:grid-cols-3">
+            {guideLinks.map((guide) => (
+              <Link key={guide.href} href={guide.href} className="border border-slate-200 bg-white p-4 transition hover:border-sky-300 hover:bg-sky-50">
+                <p className="font-semibold text-slate-900">{guide.label}</p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{guide.description}</p>
               </Link>
             ))}
           </div>

@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import doctorsJson from "@/data/doctors.json";
+import { getHiddenDoctorIds } from "@/lib/arztbereichAdminStore";
 import { getUpcomingManualSlotsByDoctorIds } from "@/lib/manualDoctorSlots";
 import { normalizeDoctorsData } from "@/lib/doctors";
 
-const doctors = normalizeDoctorsData(doctorsJson);
 const CHUNK_SIZE = 120;
 
 function chunkDoctorIds(ids: string[], size: number) {
@@ -16,6 +16,8 @@ function chunkDoctorIds(ids: string[], size: number) {
 
 export async function GET() {
   try {
+    const hiddenDoctorIds = await getHiddenDoctorIds();
+    const doctors = normalizeDoctorsData(doctorsJson).filter((doctor) => !hiddenDoctorIds.has(doctor.id));
     const slotsByDoctor = new Map<
       string,
       Array<{ id: string; doctorId: string; start: string; end: string; status: "free" | "booked" | "cancelled"; createdAt: string; updatedAt: string }>

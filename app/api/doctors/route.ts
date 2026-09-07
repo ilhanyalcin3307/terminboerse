@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import doctorsJson from "@/data/doctors.json";
+import { getCustomProfiles, getHiddenDoctorIds } from "@/lib/arztbereichAdminStore";
 import { getDoctorCommunityPreviews } from "@/lib/doctorCommunity";
 import { getNextFreeSlotMap } from "@/lib/manualDoctorSlots";
 import {
   getDoctorDistricts,
   getDoctorSpecialties,
+  mergeDoctorProfiles,
   normalizeDoctorsData,
   tokenizeDoctorSearch,
 } from "@/lib/doctors";
@@ -13,20 +15,6 @@ const ALL_SPECIALTIES = "Alle Fachbereiche";
 const ALL_DISTRICTS = "Alle Bezirke";
 const DEFAULT_PAGE_SIZE = 24;
 const MAX_PAGE_SIZE = 60;
-
-const allDoctors = normalizeDoctorsData(doctorsJson);
-const allSpecialties = [ALL_SPECIALTIES, ...getDoctorSpecialties(allDoctors)];
-const allDistricts = [ALL_DISTRICTS, ...getDoctorDistricts(allDoctors).filter((item) => item !== "All Wien")];
-const doctorsWithIndex = allDoctors.map((doctor) => ({
-  doctor,
-  searchable: tokenizeDoctorSearch(`${doctor.name} ${doctor.address} ${doctor.specialty} ${doctor.district}`).join(" "),
-}));
-
-const baseStats = {
-  totalDoctors: allDoctors.length,
-  totalWithPhone: allDoctors.filter((item) => Boolean(item.phone)).length,
-  totalSpecialties: allSpecialties.length - 1,
-};
 
 function parsePositiveInt(value: string | null, fallback: number) {
   if (!value) {
@@ -62,6 +50,16 @@ export async function GET(request: Request) {
   const specialty = searchParams.get("specialty")?.trim() ?? ALL_SPECIALTIES;
   const page = parsePositiveInt(searchParams.get("page"), 1);
   const pageSize = Math.min(parsePositiveInt(searchParams.get("pageSize"), DEFAULT_PAGE_SIZE), MAX_PAGE_SIZE);
+  const [customProfiles, hiddenDoctorIds] = await Promise.all([getCustomProfiles(), getHiddenDoctorIds()]);
+  const allDoctors = mergeDoctorProfiles(normalizeDoctorsData(doctorsJson), customProfiles).filter(
+    (doctor) => !hiddenDoctorIds.has(doctor.id),
+  );
+  const allSpecialties = [ALL_SPECIALTIES, ...getDoctorSpecialties(allDoctors)];
+  const allDistricts = [ALL_DISTRICTS, ...getDoctorDistricts(allDoctors).filter((item) => item !== "All Wien")];
+  const doctorsWithIndex = allDoctors.map((doctor) => ({
+    doctor,
+    searchable: tokenizeDoctorSearch(`${doctor.name} ${doctor.address} ${doctor.specialty} ${doctor.district}`).join(" "),
+  }));
 
   const tokens = tokenizeDoctorSearch(query);
 
@@ -110,6 +108,10 @@ export async function GET(request: Request) {
       districts: allDistricts,
       specialties: allSpecialties,
     },
-    stats: baseStats,
+    stats: {
+      totalDoctors: allDoctors.length,
+      totalWithPhone: allDoctors.filter((item) => Boolean(item.phone)).length,
+      totalSpecialties: allSpecialties.length - 1,
+    },
   });
 }
