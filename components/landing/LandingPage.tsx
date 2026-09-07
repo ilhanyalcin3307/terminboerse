@@ -780,28 +780,6 @@ export function LandingPage({
           </p>
         </section>
 
-        {topViewedDoctors.length > 0 ? (
-          <section className="rounded-2xl border border-sky-200 bg-sky-50 p-4 shadow-sm">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <p className="inline-flex items-center gap-2 text-sm font-semibold text-sky-950">
-                <TrendingUp className="h-4 w-4 text-sky-700" />
-                Meistgesuchte Ärzte
-              </p>
-              <p className="text-xs text-sky-800">Aktualisiert täglich</p>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-              {topViewedDoctors.map((doctor, index) => (
-                <Link key={doctor.doctorId} href={`/arzt/${encodeURIComponent(doctor.slug)}`} className="rounded-xl border border-sky-200 bg-white p-3 transition hover:border-sky-400 hover:bg-sky-50">
-                  <p className="text-xs font-bold text-sky-700">#{index + 1}</p>
-                  <p className="mt-1 text-sm font-semibold text-slate-900">{doctor.name}</p>
-                  <p className="mt-1 text-xs text-slate-600">{doctor.specialty}</p>
-                  <p className="text-xs text-slate-500">{doctor.district}</p>
-                </Link>
-              ))}
-            </div>
-          </section>
-        ) : null}
-
         <section className="rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 via-white to-emerald-50 p-4 shadow-sm">
           <div className="mb-2 flex items-center justify-between">
             <p className="text-sm font-semibold text-emerald-700">Freie Termine in den nächsten 3 Tagen</p>
@@ -835,6 +813,28 @@ export function LandingPage({
             <p className="mt-2 text-sm text-slate-600">Aktuell wurden noch keine freien 3-Tage-Slots veröffentlicht.</p>
           )}
         </section>
+
+        {topViewedDoctors.length > 0 ? (
+          <section className="rounded-2xl border border-sky-200 bg-sky-50 p-4 shadow-sm">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <p className="inline-flex items-center gap-2 text-sm font-semibold text-sky-950">
+                <TrendingUp className="h-4 w-4 text-sky-700" />
+                Meistgesuchte Ärzte
+              </p>
+              <p className="text-xs text-sky-800">Aktualisiert täglich</p>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+              {topViewedDoctors.map((doctor, index) => (
+                <Link key={doctor.doctorId} href={`/arzt/${encodeURIComponent(doctor.slug)}`} className="rounded-xl border border-sky-200 bg-white p-3 transition hover:border-sky-400 hover:bg-sky-50">
+                  <p className="text-xs font-bold text-sky-700">#{index + 1}</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-900">{doctor.name}</p>
+                  <p className="mt-1 text-xs text-slate-600">{doctor.specialty}</p>
+                  <p className="text-xs text-slate-500">{doctor.district}</p>
+                </Link>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <section className="rounded-3xl border border-slate-200 bg-white p-6 md:p-8">
           <div className="mb-6 flex items-center gap-2">
