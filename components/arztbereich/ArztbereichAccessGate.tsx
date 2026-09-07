@@ -80,13 +80,47 @@ function clearAuth() {
 }
 
 export function ArztbereichAccessGate({ doctors }: ArztbereichAccessGateProps) {
-  const [mode, setMode] = useState<"login" | "register">("login");
-  const [registrationType, setRegistrationType] = useState<"existing" | "new">("existing");
-  const [registrationSearchTerm, setRegistrationSearchTerm] = useState("");
-  const [email, setEmail] = useState("");
+  const [mode, setMode] = useState<"login" | "register">(() => {
+    if (typeof window === "undefined") {
+      return "login";
+    }
+    const params = new URLSearchParams(window.location.search);
+    return params.get("mode") === "register" ? "register" : "login";
+  });
+  const [registrationType, setRegistrationType] = useState<"existing" | "new">(() => {
+    if (typeof window === "undefined") {
+      return "existing";
+    }
+    const params = new URLSearchParams(window.location.search);
+    return params.get("doctorId") ? "existing" : "existing";
+  });
+  const [registrationSearchTerm, setRegistrationSearchTerm] = useState(() => {
+    if (typeof window === "undefined") {
+      return "";
+    }
+    const params = new URLSearchParams(window.location.search);
+    const doctorId = params.get("doctorId");
+    if (!doctorId) {
+      return "";
+    }
+    return doctors.find((doctor) => doctor.id === doctorId)?.name ?? "";
+  });
+  const [email, setEmail] = useState(() => {
+    if (typeof window === "undefined") {
+      return "";
+    }
+    const params = new URLSearchParams(window.location.search);
+    return params.get("email") ?? "";
+  });
   const [password, setPassword] = useState("");
   const [passwordRepeat, setPasswordRepeat] = useState("");
-  const [selectedDoctorId, setSelectedDoctorId] = useState("");
+  const [selectedDoctorId, setSelectedDoctorId] = useState(() => {
+    if (typeof window === "undefined") {
+      return "";
+    }
+    const params = new URLSearchParams(window.location.search);
+    return params.get("doctorId") ?? "";
+  });
   const [doctorName, setDoctorName] = useState("");
   const [doctorPhone, setDoctorPhone] = useState("");
   const [specialty, setSpecialty] = useState("");
@@ -235,36 +269,12 @@ export function ArztbereichAccessGate({ doctors }: ArztbereichAccessGateProps) {
   }, []);
 
   useEffect(() => {
-    if (!selectedRegistrationDoctor) {
-      return;
-    }
-    if (registrationSearchTerm.trim() !== "") {
-      return;
-    }
-    setRegistrationSearchTerm(selectedRegistrationDoctor.name);
-  }, [selectedRegistrationDoctor, registrationSearchTerm]);
-
-  useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
 
     const params = new URLSearchParams(window.location.search);
-    const modeFromQuery = params.get("mode");
-    const emailFromQuery = params.get("email");
-    const doctorIdFromQuery = params.get("doctorId");
     const oauthFlow = params.get("oauth");
-
-    if (modeFromQuery === "register") {
-      setMode("register");
-    }
-    if (emailFromQuery) {
-      setEmail(emailFromQuery);
-    }
-    if (doctorIdFromQuery) {
-      setRegistrationType("existing");
-      setSelectedDoctorId(doctorIdFromQuery);
-    }
 
     async function resumeOAuthDoctorFlow() {
       if (oauthFlow !== "doctor" || !supabaseClient) {
@@ -387,6 +397,15 @@ export function ArztbereichAccessGate({ doctors }: ArztbereichAccessGateProps) {
       if (!hydrateOk) {
         throw new Error("Sitzung konnte nicht geladen werden.");
       }
+
+      window.dataLayer = window.dataLayer || [];
+      window.dataLayer.push({
+        event: "arzt_login",
+        doctor_id: selectedDoctorId || "",
+        fachbereich: specialty || "",
+        doctor_name: doctorName || email,
+        role: "doctor",
+      });
 
       saveAuth({ token: payload.token });
       setPassword("");

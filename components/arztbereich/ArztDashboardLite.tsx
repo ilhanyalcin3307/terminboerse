@@ -28,6 +28,12 @@ type ArztDashboardDoctor = {
   phone?: string;
   email?: string;
   website?: string;
+  bookingUrl?: string;
+  about?: string;
+  services?: LeistungItem[];
+  languages?: string[];
+  insuranceModels?: string[];
+  acceptsNewPatients?: boolean;
 };
 
 type ApprovalItem = {
@@ -51,15 +57,62 @@ type ApprovalItem = {
   approvedDoctorName?: string;
 };
 
+type ManagedProfile = {
+  accountId: string;
+  accountEmail: string;
+  accountCreatedAt: string;
+  doctorId: string;
+  name: string;
+  specialty: string;
+  district: string;
+  address: string;
+  isActive: boolean;
+  openSlotsCount: number;
+};
+
+type ManagedProfileFilter = "all" | "active" | "inactive" | "without_slots";
+
+type OperationsSummary = {
+  activeDoctorAccounts: number;
+  pendingRegistrations: number;
+  incompleteVisibleProfiles: number;
+  visibleProfilesWithoutFreeSlots: number;
+  hiddenProfiles: number;
+};
+
+type AdminDoctorListItem = {
+  id: string;
+  name: string;
+  specialty: string;
+  district: string;
+  address: string;
+  isHidden: boolean;
+  isCustomProfile: boolean;
+  profileCompletion: {
+    percent: number;
+    missing: string[];
+  };
+  account: {
+    email: string;
+    isActive: boolean;
+    lastSignInAt: string | null;
+  } | null;
+  lastSlotPublishedAt: string | null;
+};
+
 type ProfileForm = {
   name: string;
   specialty: string;
   district: string;
   address: string;
+  providerType: "OEGK" | "Wahlarzt" | "Privat";
   phone: string;
   email: string;
   website: string;
+  bookingUrl: string;
   about: string;
+  languages: string[];
+  insuranceModels: string[];
 };
 
 type AppointmentForm = {
@@ -169,7 +222,7 @@ type CalendarHealth = {
   slotSummaryReason?: string;
 };
 
-type DashboardTab = "freigaben" | "managed" | "profil" | "termine" | "bewertungen" | "leistungen";
+type DashboardTab = "freigaben" | "managed" | "arztliste" | "profil" | "termine" | "bewertungen" | "leistungen" | "konto";
 type TermineSubTab = "board" | "settings";
 type CalendarViewMode = "week" | "day";
 type SlotDayFilter = "all" | "today" | "tomorrow" | "day_after_tomorrow";
@@ -183,6 +236,8 @@ type ArztDashboardLiteProps = {
 
 const SELECTED_DOCTOR_ID_STORAGE_KEY = "terminboerse_arzt_selected_doctor_id";
 const SELECTED_DOCTOR_STORAGE_KEY = "terminboerse_arzt_selected_doctor";
+const LANGUAGE_OPTIONS = ["Deutsch", "Englisch", "Türkisch", "Arabisch", "Bosnisch/Kroatisch/Serbisch", "Französisch", "Spanisch", "Italienisch"];
+const INSURANCE_OPTIONS = ["OEGK", "Wahlarzt", "Privat", "SVS", "BVAEB", "KFA", "Selbstzahler"];
 
 function formatDate(value: string) {
   const date = new Date(value);
@@ -265,6 +320,10 @@ function createClientId() {
   return `leistung-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function toggleSelection(current: string[], value: string) {
+  return current.includes(value) ? current.filter((item) => item !== value) : [...current, value];
+}
+
 function getDefaultProfile(doctor: ArztDashboardDoctor | null): ProfileForm {
   if (!doctor) {
     return {
@@ -272,22 +331,30 @@ function getDefaultProfile(doctor: ArztDashboardDoctor | null): ProfileForm {
       specialty: "",
       district: "",
       address: "",
+      providerType: "OEGK",
       phone: "",
       email: "",
       website: "",
+      bookingUrl: "",
       about: "",
+      languages: ["Deutsch"],
+      insuranceModels: [],
     };
   }
 
   return {
-    name: doctor.name,
-    specialty: doctor.specialty,
-    district: doctor.district,
-    address: doctor.address,
+    name: doctor.name || "",
+    specialty: doctor.specialty || "",
+    district: doctor.district || "",
+    address: doctor.address || "",
+    providerType: doctor.providerType || "OEGK",
     phone: doctor.phone ?? "",
     email: doctor.email ?? "",
     website: doctor.website ?? "",
-    about: "",
+    bookingUrl: doctor.bookingUrl ?? "",
+    about: doctor.about ?? "",
+    languages: doctor.languages?.length ? doctor.languages : ["Deutsch"],
+    insuranceModels: doctor.insuranceModels ?? [],
   };
 }
 
@@ -512,6 +579,32 @@ export function ArztDashboardLite({ doctors, role, authToken }: ArztDashboardLit
   const [editingApprovalId, setEditingApprovalId] = useState("");
   const [editingDoctorId, setEditingDoctorId] = useState("");
   const [isSavingReassign, setIsSavingReassign] = useState(false);
+  const [assignmentSearchTerm, setAssignmentSearchTerm] = useState("");
+  const [assignmentSearchResults, setAssignmentSearchResults] = useState<ArztDashboardDoctor[]>([]);
+  const [isSearchingAssignment, setIsSearchingAssignment] = useState(false);
+  const [managedProfiles, setManagedProfiles] = useState<ManagedProfile[]>([]);
+  const [isLoadingManagedProfiles, setIsLoadingManagedProfiles] = useState(false);
+  const [managedProfilesError, setManagedProfilesError] = useState("");
+  const [managedProfileFilter, setManagedProfileFilter] = useState<ManagedProfileFilter>("all");
+  const [updatingAccountId, setUpdatingAccountId] = useState("");
+  const [adminDoctorList, setAdminDoctorList] = useState<AdminDoctorListItem[]>([]);
+  const [adminDoctorListQuery, setAdminDoctorListQuery] = useState("");
+  const [adminDoctorListPage, setAdminDoctorListPage] = useState(1);
+  const [adminDoctorListTotalPages, setAdminDoctorListTotalPages] = useState(1);
+  const [adminDoctorListTotal, setAdminDoctorListTotal] = useState(0);
+  const [isLoadingAdminDoctorList, setIsLoadingAdminDoctorList] = useState(false);
+  const [adminDoctorListError, setAdminDoctorListError] = useState("");
+  const [actingDoctorId, setActingDoctorId] = useState("");
+  const [expandedAdminDoctorId, setExpandedAdminDoctorId] = useState("");
+  const [operationsSummary, setOperationsSummary] = useState<OperationsSummary | null>(null);
+  const [operationsSummaryError, setOperationsSummaryError] = useState("");
+  const [accountCurrentPassword, setAccountCurrentPassword] = useState("");
+  const [accountNewPassword, setAccountNewPassword] = useState("");
+  const [accountNewPasswordRepeat, setAccountNewPasswordRepeat] = useState("");
+  const [accountNewEmail, setAccountNewEmail] = useState("");
+  const [accountSecurityMessage, setAccountSecurityMessage] = useState("");
+  const [accountSecurityError, setAccountSecurityError] = useState("");
+  const [isSavingAccountSecurity, setIsSavingAccountSecurity] = useState(false);
 
   const [doctorSearchTerm, setDoctorSearchTerm] = useState("");
   const [isSearchingDoctors, setIsSearchingDoctors] = useState(false);
@@ -763,12 +856,14 @@ export function ArztDashboardLite({ doctors, role, authToken }: ArztDashboardLit
     const email = profileForm.email.trim();
     const phone = profileForm.phone.trim();
     const website = profileForm.website.trim();
+    const bookingUrl = profileForm.bookingUrl.trim();
     const about = profileForm.about.trim();
 
     return {
       phone: phone.length > 0 && !isValidPhone(phone) ? "Bitte gültige Telefonnummer eingeben (z. B. +43...)." : "",
       email: email.length > 0 && !isValidEmail(email) ? "Bitte gültige E-Mail-Adresse eingeben." : "",
       website: website.length > 0 && !isValidWebsite(website) ? "Bitte gültige URL mit http:// oder https:// eingeben." : "",
+      bookingUrl: bookingUrl.length > 0 && !isValidWebsite(bookingUrl) ? "Bitte gültige URL für Online-Termine mit http:// oder https:// eingeben." : "",
       about: about.length > 0 && about.length < 80 ? "Bitte mindestens 80 Zeichen im Feld Über mich eintragen." : "",
     };
   }, [profileForm]);
@@ -794,6 +889,19 @@ export function ArztDashboardLite({ doctors, role, authToken }: ArztDashboardLit
 
     return matches.slice(0, 25);
   }, [doctors, isSearchReady, normalizedSearchTerm, remoteSearchDoctors, role]);
+
+  const visibleManagedProfiles = useMemo(() => {
+    if (managedProfileFilter === "active") {
+      return managedProfiles.filter((profile) => profile.isActive);
+    }
+    if (managedProfileFilter === "inactive") {
+      return managedProfiles.filter((profile) => !profile.isActive);
+    }
+    if (managedProfileFilter === "without_slots") {
+      return managedProfiles.filter((profile) => profile.openSlotsCount === 0);
+    }
+    return managedProfiles;
+  }, [managedProfileFilter, managedProfiles]);
 
   useEffect(() => {
     if (role !== "admin" || !authToken || !isSearchReady) {
@@ -837,6 +945,31 @@ export function ArztDashboardLite({ doctors, role, authToken }: ArztDashboardLit
 
     void runSearch();
   }, [role, authToken, doctorSearchTerm, isSearchReady]);
+
+  useEffect(() => {
+    const query = assignmentSearchTerm.trim();
+    if (role !== "admin" || !authToken || !editingApprovalId || query.length < 3) {
+      setAssignmentSearchResults([]);
+      return;
+    }
+
+    async function searchAssignmentDoctors() {
+      setIsSearchingAssignment(true);
+      try {
+        const response = await fetch("/api/arztbereich/search-doctors", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: authToken, query, limit: 10 }),
+        });
+        const payload = (await response.json()) as { ok?: boolean; doctors?: ArztDashboardDoctor[] };
+        setAssignmentSearchResults(response.ok && payload.ok && Array.isArray(payload.doctors) ? payload.doctors : []);
+      } finally {
+        setIsSearchingAssignment(false);
+      }
+    }
+
+    void searchAssignmentDoctors();
+  }, [assignmentSearchTerm, authToken, editingApprovalId, role]);
 
   useEffect(() => {
     if (!isDoctorRole) {
@@ -926,14 +1059,24 @@ export function ArztDashboardLite({ doctors, role, authToken }: ArztDashboardLit
     setProfileForm({
       ...fallbackProfile,
       ...storedProfile,
-      name: typeof storedProfile?.name === "string" ? storedProfile.name : fallbackProfile.name,
-      specialty: typeof storedProfile?.specialty === "string" ? storedProfile.specialty : fallbackProfile.specialty,
-      district: typeof storedProfile?.district === "string" ? storedProfile.district : fallbackProfile.district,
-      address: typeof storedProfile?.address === "string" ? storedProfile.address : fallbackProfile.address,
-      phone: typeof storedProfile?.phone === "string" ? storedProfile.phone : fallbackProfile.phone,
-      email: typeof storedProfile?.email === "string" ? storedProfile.email : fallbackProfile.email,
-      website: typeof storedProfile?.website === "string" ? storedProfile.website : fallbackProfile.website,
-      about: typeof storedProfile?.about === "string" ? storedProfile.about : fallbackProfile.about,
+      name: typeof storedProfile?.name === "string" && storedProfile.name.trim() ? storedProfile.name : fallbackProfile.name,
+      specialty: typeof storedProfile?.specialty === "string" && storedProfile.specialty.trim() ? storedProfile.specialty : fallbackProfile.specialty,
+      district: typeof storedProfile?.district === "string" && storedProfile.district.trim() ? storedProfile.district : fallbackProfile.district,
+      address: typeof storedProfile?.address === "string" && storedProfile.address.trim() ? storedProfile.address : fallbackProfile.address,
+      providerType:
+        storedProfile?.providerType === "OEGK" || storedProfile?.providerType === "Wahlarzt" || storedProfile?.providerType === "Privat"
+          ? storedProfile.providerType
+          : fallbackProfile.providerType,
+      phone: typeof storedProfile?.phone === "string" && storedProfile.phone.trim() ? storedProfile.phone : fallbackProfile.phone,
+      email: typeof storedProfile?.email === "string" && storedProfile.email.trim() ? storedProfile.email : fallbackProfile.email,
+      website: typeof storedProfile?.website === "string" && storedProfile.website.trim() ? storedProfile.website : fallbackProfile.website,
+      bookingUrl: typeof storedProfile?.bookingUrl === "string" && storedProfile.bookingUrl.trim() ? storedProfile.bookingUrl : fallbackProfile.bookingUrl,
+      about: typeof storedProfile?.about === "string" && storedProfile.about.trim() ? storedProfile.about : fallbackProfile.about,
+      languages:
+        Array.isArray(storedProfile?.languages) && storedProfile.languages.length > 0
+          ? storedProfile.languages
+          : fallbackProfile.languages,
+      insuranceModels: Array.isArray(storedProfile?.insuranceModels) ? storedProfile.insuranceModels : fallbackProfile.insuranceModels,
     });
 
     const defaultWorkingHours = getDefaultWorkingHours();
@@ -1294,6 +1437,226 @@ export function ArztDashboardLite({ doctors, role, authToken }: ArztDashboardLit
     }
   }
 
+  async function loadManagedProfiles() {
+    if (!authToken || role !== "admin") {
+      return;
+    }
+
+    setIsLoadingManagedProfiles(true);
+    setManagedProfilesError("");
+
+    try {
+      const response = await fetch("/api/arztbereich/managed-profiles", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ token: authToken }),
+      });
+      const payload = (await response.json()) as { ok?: boolean; error?: string; profiles?: ManagedProfile[] };
+
+      if (!response.ok || !payload.ok || !Array.isArray(payload.profiles)) {
+        throw new Error(payload.error ?? "Verwaltete Profile konnten nicht geladen werden.");
+      }
+
+      setManagedProfiles(payload.profiles);
+    } catch (error) {
+      setManagedProfilesError(error instanceof Error ? error.message : "Verwaltete Profile konnten nicht geladen werden.");
+    } finally {
+      setIsLoadingManagedProfiles(false);
+    }
+  }
+
+  async function updateManagedProfileStatus(profile: ManagedProfile) {
+    if (!authToken || role !== "admin") {
+      return;
+    }
+
+    setUpdatingAccountId(profile.accountId);
+    setManagedProfilesError("");
+
+    try {
+      const response = await fetch("/api/arztbereich/managed-profiles/status", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ token: authToken, accountId: profile.accountId, isActive: !profile.isActive }),
+      });
+      const payload = (await response.json()) as { ok?: boolean; error?: string };
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error ?? "Kontostatus konnte nicht gespeichert werden.");
+      }
+
+      setManagedProfiles((current) =>
+        current.map((item) => (item.accountId === profile.accountId ? { ...item, isActive: !item.isActive } : item)),
+      );
+    } catch (error) {
+      setManagedProfilesError(error instanceof Error ? error.message : "Kontostatus konnte nicht gespeichert werden.");
+    } finally {
+      setUpdatingAccountId("");
+    }
+  }
+
+  async function sendAdminPasswordReset(profile: ManagedProfile) {
+    if (!authToken || role !== "admin") {
+      return;
+    }
+    if (!window.confirm(`Reset-E-Mail an ${profile.accountEmail} senden?`)) {
+      return;
+    }
+
+    setUpdatingAccountId(profile.accountId);
+    setManagedProfilesError("");
+    try {
+      const response = await fetch("/api/arztbereich/account-security", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token: authToken,
+          action: "admin_send_password_reset",
+          accountId: profile.accountId,
+          origin: window.location.origin,
+        }),
+      });
+      const payload = (await response.json()) as { ok?: boolean; error?: string };
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error ?? "Reset-E-Mail konnte nicht gesendet werden.");
+      }
+      setManagedProfilesError(`Reset-E-Mail wurde an ${profile.accountEmail} gesendet.`);
+    } catch (error) {
+      setManagedProfilesError(error instanceof Error ? error.message : "Reset-E-Mail konnte nicht gesendet werden.");
+    } finally {
+      setUpdatingAccountId("");
+    }
+  }
+
+  async function loadAdminDoctorList(page = adminDoctorListPage) {
+    if (!authToken || role !== "admin") {
+      return;
+    }
+
+    setIsLoadingAdminDoctorList(true);
+    setAdminDoctorListError("");
+    try {
+      const response = await fetch("/api/arztbereich/doctor-list", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: authToken, query: adminDoctorListQuery, page }),
+      });
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        error?: string;
+        doctors?: AdminDoctorListItem[];
+        pagination?: { page: number; totalPages: number; total: number };
+      };
+      if (!response.ok || !payload.ok || !Array.isArray(payload.doctors) || !payload.pagination) {
+        throw new Error(payload.error ?? "Arztliste konnte nicht geladen werden.");
+      }
+      setAdminDoctorList(payload.doctors);
+      setAdminDoctorListPage(payload.pagination.page);
+      setAdminDoctorListTotalPages(payload.pagination.totalPages);
+      setAdminDoctorListTotal(payload.pagination.total);
+    } catch (error) {
+      setAdminDoctorListError(error instanceof Error ? error.message : "Arztliste konnte nicht geladen werden.");
+    } finally {
+      setIsLoadingAdminDoctorList(false);
+    }
+  }
+
+  async function loadOperationsSummary() {
+    if (!authToken || role !== "admin") {
+      return;
+    }
+
+    setOperationsSummaryError("");
+    try {
+      const response = await fetch("/api/arztbereich/operations-summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: authToken }),
+      });
+      const payload = (await response.json()) as { ok?: boolean; error?: string; summary?: OperationsSummary };
+      if (!response.ok || !payload.ok || !payload.summary) {
+        throw new Error(payload.error ?? "Operationsübersicht konnte nicht geladen werden.");
+      }
+      setOperationsSummary(payload.summary);
+    } catch (error) {
+      setOperationsSummaryError(error instanceof Error ? error.message : "Operationsübersicht konnte nicht geladen werden.");
+    }
+  }
+
+  async function applyAdminDoctorAction(doctor: AdminDoctorListItem, action: "hide" | "restore" | "delete") {
+    if (!authToken || role !== "admin") {
+      return;
+    }
+    const actionLabel = action === "delete" ? "endgültig löschen" : action === "hide" ? "ausblenden" : "wiederherstellen";
+    if (!window.confirm(`${doctor.name} wirklich ${actionLabel}?`)) {
+      return;
+    }
+
+    setActingDoctorId(doctor.id);
+    setAdminDoctorListError("");
+    try {
+      const response = await fetch("/api/arztbereich/doctor-list/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: authToken, doctorId: doctor.id, action }),
+      });
+      const payload = (await response.json()) as { ok?: boolean; error?: string };
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error ?? "Aktion konnte nicht ausgeführt werden.");
+      }
+      await loadAdminDoctorList(action === "delete" && adminDoctorList.length === 1 && adminDoctorListPage > 1 ? adminDoctorListPage - 1 : adminDoctorListPage);
+    } catch (error) {
+      setAdminDoctorListError(error instanceof Error ? error.message : "Aktion konnte nicht ausgeführt werden.");
+    } finally {
+      setActingDoctorId("");
+    }
+  }
+
+  async function submitAccountSecurity(action: "change_password" | "change_email" | "send_password_reset") {
+    if (!authToken || role !== "doctor") {
+      return;
+    }
+    if (action === "change_password" && accountNewPassword !== accountNewPasswordRepeat) {
+      setAccountSecurityError("Die neuen Passwörter stimmen nicht überein.");
+      return;
+    }
+
+    setIsSavingAccountSecurity(true);
+    setAccountSecurityError("");
+    setAccountSecurityMessage("");
+    try {
+      const response = await fetch("/api/arztbereich/account-security", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token: authToken,
+          action,
+          currentPassword: action === "send_password_reset" ? undefined : accountCurrentPassword,
+          newPassword: action === "change_password" ? accountNewPassword : undefined,
+          newEmail: action === "change_email" ? accountNewEmail : undefined,
+          origin: window.location.origin,
+        }),
+      });
+      const payload = (await response.json()) as { ok?: boolean; error?: string };
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error ?? "Kontoeinstellung konnte nicht gespeichert werden.");
+      }
+      if (action === "send_password_reset") {
+        setAccountSecurityMessage("Die E-Mail zum Zurücksetzen des Passworts wurde gesendet.");
+        return;
+      }
+      localStorage.removeItem("terminboerse_arztbereich_auth_v2");
+      window.location.assign("/arztbereich");
+    } catch (error) {
+      setAccountSecurityError(error instanceof Error ? error.message : "Kontoeinstellung konnte nicht gespeichert werden.");
+    } finally {
+      setIsSavingAccountSecurity(false);
+    }
+  }
+
   async function reviewApproval(requestId: string, decision: "approve" | "reject") {
     if (!authToken || role !== "admin") {
       return;
@@ -1363,7 +1726,7 @@ export function ArztDashboardLite({ doctors, role, authToken }: ArztDashboardLit
     }
   }
 
-  function saveProfile() {
+  async function saveProfile() {
     if (hasProfileValidationErrors) {
       setSavedProfile(false);
       setProfileSaveError("Bitte korrigiere zuerst die markierten Felder.");
@@ -1378,13 +1741,65 @@ export function ArztDashboardLite({ doctors, role, authToken }: ArztDashboardLit
     try {
       localStorage.setItem(key, JSON.stringify(profileForm));
       localStorage.setItem(workingHoursKey, JSON.stringify(workingHoursForm));
+
+      if (selectedDoctor && authToken) {
+        const response = await fetch("/api/arztbereich/profile/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            token: authToken,
+            doctorId: selectedDoctor.id,
+            name: profileForm.name,
+            specialty: profileForm.specialty,
+            district: profileForm.district,
+            address: profileForm.address,
+            providerType: profileForm.providerType,
+            phone: profileForm.phone,
+            email: profileForm.email,
+            website: profileForm.website,
+            bookingUrl: profileForm.bookingUrl,
+            workingHours: workingHoursForm,
+            about: profileForm.about,
+            languages: profileForm.languages,
+            insuranceModels: profileForm.insuranceModels,
+            acceptsNewPatients: appointmentForm.acceptsNewPatients,
+            services: leistungen,
+          }),
+        });
+        const payload = (await response.json()) as { ok?: boolean; error?: string };
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.error ?? "Arztprofil konnte nicht gespeichert werden.");
+        }
+      }
+
       setSavedProfile(true);
+      if (selectedDoctor) {
+        setRemoteSearchDoctors((current) =>
+          current.map((item) =>
+            item.id === selectedDoctor.id
+              ? {
+                  ...item,
+                  name: profileForm.name,
+                  specialty: profileForm.specialty,
+                  district: profileForm.district,
+                  address: profileForm.address,
+                  providerType: profileForm.providerType,
+                  phone: profileForm.phone,
+                  email: profileForm.email,
+                  website: profileForm.website,
+                  bookingUrl: profileForm.bookingUrl,
+                }
+              : item,
+          ),
+        );
+      }
       window.setTimeout(() => setSavedProfile(false), 1800);
       if (selectedDoctor && authToken) {
         void updateSchedulingStatus({ profileUpdated: true });
       }
-    } catch {
+    } catch (error) {
       setSavedProfile(false);
+      setProfileSaveError(error instanceof Error ? error.message : "Arztprofil konnte nicht gespeichert werden.");
     }
   }
 
@@ -1415,7 +1830,7 @@ export function ArztDashboardLite({ doctors, role, authToken }: ArztDashboardLit
     setLeistungen((prev) => prev.filter((item) => item.id !== id));
   }
 
-  function saveLeistungen() {
+  async function saveLeistungen() {
     const key = selectedDoctor ? `terminboerse_arzt_services_${selectedDoctor.id}` : "terminboerse_arzt_services_draft_new";
     const cleaned = leistungen
       .map((item) => ({
@@ -1430,10 +1845,22 @@ export function ArztDashboardLite({ doctors, role, authToken }: ArztDashboardLit
     try {
       localStorage.setItem(key, JSON.stringify(cleaned));
       setLeistungen(cleaned);
+      if (selectedDoctor && authToken) {
+        const response = await fetch("/api/arztbereich/profile/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: authToken, doctorId: selectedDoctor.id, services: cleaned }),
+        });
+        const payload = (await response.json()) as { ok?: boolean; error?: string };
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.error ?? "Leistungen konnten nicht gespeichert werden.");
+        }
+      }
       setSavedLeistungen(true);
       window.setTimeout(() => setSavedLeistungen(false), 1800);
-    } catch {
+    } catch (error) {
       setSavedLeistungen(false);
+      setProfileSaveError(error instanceof Error ? error.message : "Leistungen konnten nicht gespeichert werden.");
     }
   }
 
@@ -1781,6 +2208,24 @@ export function ArztDashboardLite({ doctors, role, authToken }: ArztDashboardLit
     }
   }, [isAdminRole, activeTab]);
 
+  useEffect(() => {
+    if (isAdminRole) {
+      void loadOperationsSummary();
+    }
+  }, [isAdminRole]);
+
+  useEffect(() => {
+    if (isAdminRole && activeTab === "managed") {
+      void loadManagedProfiles();
+    }
+  }, [isAdminRole, activeTab]);
+
+  useEffect(() => {
+    if (isAdminRole && activeTab === "arztliste") {
+      void loadAdminDoctorList(1);
+    }
+  }, [isAdminRole, activeTab]);
+
   return (
     <main className="mx-auto w-full max-w-6xl px-4 pb-16 pt-8 sm:px-6 lg:px-8">
       <section className="rounded-4xl border border-slate-200 bg-white p-6 shadow-sm md:p-8">
@@ -1794,6 +2239,32 @@ export function ArztDashboardLite({ doctors, role, authToken }: ArztDashboardLit
           <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
           Manual Slot Modus aktiv (3-Tage-System)
         </div>
+
+        {isAdminRole && operationsSummary ? (
+          <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+            <button type="button" onClick={() => setActiveTab("managed")} className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-left text-emerald-950">
+              <span className="block text-2xl font-extrabold">{operationsSummary.activeDoctorAccounts}</span>
+              <span className="block text-xs font-semibold">Aktive Arztkonten</span>
+            </button>
+            <button type="button" onClick={() => setActiveTab("freigaben")} className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-left text-amber-950">
+              <span className="block text-2xl font-extrabold">{operationsSummary.pendingRegistrations}</span>
+              <span className="block text-xs font-semibold">Freischaltungen offen</span>
+            </button>
+            <button type="button" onClick={() => setActiveTab("arztliste")} className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-left text-sky-950">
+              <span className="block text-2xl font-extrabold">{operationsSummary.incompleteVisibleProfiles}</span>
+              <span className="block text-xs font-semibold">Profile unvollständig</span>
+            </button>
+            <button type="button" onClick={() => setActiveTab("arztliste")} className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-left text-rose-950">
+              <span className="block text-2xl font-extrabold">{operationsSummary.visibleProfilesWithoutFreeSlots}</span>
+              <span className="block text-xs font-semibold">Ohne freie Slots</span>
+            </button>
+            <button type="button" onClick={() => setActiveTab("arztliste")} className="rounded-lg border border-slate-300 bg-slate-100 p-3 text-left text-slate-900">
+              <span className="block text-2xl font-extrabold">{operationsSummary.hiddenProfiles}</span>
+              <span className="block text-xs font-semibold">Profile ausgeblendet</span>
+            </button>
+          </div>
+        ) : null}
+        {isAdminRole && operationsSummaryError ? <p className="mt-3 text-sm font-semibold text-rose-700">{operationsSummaryError}</p> : null}
 
         <div className="mt-5 flex flex-wrap gap-2">
           {isAdminRole ? (
@@ -1815,6 +2286,15 @@ export function ArztDashboardLite({ doctors, role, authToken }: ArztDashboardLit
                 }`}
               >
                 Verwaltete Profile
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("arztliste")}
+                className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                  activeTab === "arztliste" ? "bg-violet-700 text-white" : "bg-violet-100 text-violet-800 hover:bg-violet-200"
+                }`}
+              >
+                Arztliste
               </button>
               <button
                 type="button"
@@ -1864,9 +2344,59 @@ export function ArztDashboardLite({ doctors, role, authToken }: ArztDashboardLit
               >
                 Leistungen
               </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("konto")}
+                className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                  activeTab === "konto" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                }`}
+              >
+                Konto & Sicherheit
+              </button>
             </>
           )}
         </div>
+
+        {isDoctorRole && activeTab === "konto" ? (
+          <section className="mt-6 max-w-2xl rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <h2 className="text-lg font-bold text-slate-900">Konto & Sicherheit</h2>
+            <p className="mt-1 text-sm text-slate-600">Die Login-E-Mail ist getrennt von der öffentlichen Kontakt-E-Mail deines Arztprofils.</p>
+
+            <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Passwort ändern</p>
+              <div className="mt-3 grid gap-3">
+                <input type="password" value={accountCurrentPassword} onChange={(event) => setAccountCurrentPassword(event.target.value)} placeholder="Aktuelles Passwort" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+                <input type="password" value={accountNewPassword} onChange={(event) => setAccountNewPassword(event.target.value)} placeholder="Neues Passwort (mindestens 8 Zeichen)" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+                <input type="password" value={accountNewPasswordRepeat} onChange={(event) => setAccountNewPasswordRepeat(event.target.value)} placeholder="Neues Passwort wiederholen" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+                <button type="button" onClick={() => void submitAccountSecurity("change_password")} disabled={isSavingAccountSecurity || !accountCurrentPassword || !accountNewPassword || !accountNewPasswordRepeat} className="w-fit rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-60">
+                  Passwort ändern
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Login-E-Mail ändern</p>
+              <div className="mt-3 grid gap-3">
+                <input type="email" value={accountNewEmail} onChange={(event) => setAccountNewEmail(event.target.value)} placeholder="Neue Login-E-Mail" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+                <input type="password" value={accountCurrentPassword} onChange={(event) => setAccountCurrentPassword(event.target.value)} placeholder="Aktuelles Passwort zur Bestätigung" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+                <button type="button" onClick={() => void submitAccountSecurity("change_email")} disabled={isSavingAccountSecurity || !accountCurrentPassword || !accountNewEmail.trim()} className="w-fit rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-800 disabled:opacity-60">
+                  Login-E-Mail ändern
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50 p-3">
+              <p className="text-sm font-semibold text-sky-950">Passwort vergessen?</p>
+              <p className="mt-1 text-xs text-sky-800">Wir senden einen einmaligen Link an deine aktuelle Login-E-Mail.</p>
+              <button type="button" onClick={() => void submitAccountSecurity("send_password_reset")} disabled={isSavingAccountSecurity} className="mt-3 rounded-lg border border-sky-300 bg-white px-3 py-2 text-xs font-semibold text-sky-800 disabled:opacity-60">
+                Reset-E-Mail senden
+              </button>
+            </div>
+
+            {accountSecurityMessage ? <p className="mt-3 text-sm font-semibold text-emerald-700">{accountSecurityMessage}</p> : null}
+            {accountSecurityError ? <p className="mt-3 text-sm font-semibold text-rose-700">{accountSecurityError}</p> : null}
+          </section>
+        ) : null}
 
         {isAdminRole && activeTab === "freigaben" ? (
           <section className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4">
@@ -1941,14 +2471,43 @@ export function ArztDashboardLite({ doctors, role, authToken }: ArztDashboardLit
                         {item.status === "approved" ? (
                           editingApprovalId === item.id ? (
                             <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
-                              <label className="block text-xs font-semibold text-slate-700">Zugeordnetes Profil (ID)</label>
+                              <label className="block text-xs font-semibold text-slate-700">Arztprofil suchen und zuordnen</label>
                               <input
-                                value={editingDoctorId}
-                                onChange={(event) => setEditingDoctorId(event.target.value)}
-                                placeholder="z.B. ARZTOGD.20467136"
+                                value={assignmentSearchTerm}
+                                onChange={(event) => setAssignmentSearchTerm(event.target.value)}
+                                placeholder="Name, Fachbereich, Bezirk..."
                                 className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs"
                               />
-                              <p className="mt-1 text-[11px] text-slate-500">Hinweis: Änderung wird spätestens nach erneutem Arzt-Login aktiv.</p>
+                              {isSearchingAssignment ? <p className="mt-1 text-[11px] text-slate-500">Suche läuft...</p> : null}
+                              {assignmentSearchResults.length > 0 ? (
+                                <ul className="mt-2 max-h-44 divide-y divide-slate-200 overflow-auto rounded-lg border border-slate-200 bg-white">
+                                  {assignmentSearchResults.map((doctor) => (
+                                    <li key={doctor.id}>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingDoctorId(doctor.id);
+                                          setAssignmentSearchTerm(doctor.name);
+                                          setAssignmentSearchResults([]);
+                                        }}
+                                        className={`w-full px-2 py-1.5 text-left text-xs hover:bg-sky-50 ${editingDoctorId === doctor.id ? "bg-sky-50" : ""}`}
+                                      >
+                                        <span className="block font-semibold text-slate-900">{doctor.name}</span>
+                                        <span className="block text-slate-600">{doctor.specialty} · {doctor.district}</span>
+                                        <span className="block text-slate-500">{doctor.address}</span>
+                                      </button>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : null}
+                              {editingDoctorId ? (
+                                <p className="mt-2 rounded-md border border-sky-200 bg-sky-50 px-2 py-1 text-[11px] font-semibold text-sky-800">
+                                  Ausgewählte Profil-ID: {editingDoctorId}
+                                </p>
+                              ) : (
+                                <p className="mt-2 text-[11px] text-slate-500">Bitte ein Arztprofil aus der Suche auswählen.</p>
+                              )}
+                              <p className="mt-1 text-[11px] text-slate-500">Die Änderung wird spätestens nach erneutem Arzt-Login aktiv.</p>
                               <div className="mt-2 flex gap-2">
                                 <button
                                   type="button"
@@ -1963,6 +2522,8 @@ export function ArztDashboardLite({ doctors, role, authToken }: ArztDashboardLit
                                   onClick={() => {
                                     setEditingApprovalId("");
                                     setEditingDoctorId("");
+                                    setAssignmentSearchTerm("");
+                                    setAssignmentSearchResults([]);
                                   }}
                                   disabled={isSavingReassign}
                                   className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 disabled:opacity-60"
@@ -1977,6 +2538,7 @@ export function ArztDashboardLite({ doctors, role, authToken }: ArztDashboardLit
                               onClick={() => {
                                 setEditingApprovalId(item.id);
                                 setEditingDoctorId(item.approvedDoctorId ?? item.selectedDoctorId ?? "");
+                                setAssignmentSearchTerm(item.approvedDoctorName ?? item.selectedDoctorName ?? "");
                               }}
                               className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700"
                             >
@@ -1997,8 +2559,115 @@ export function ArztDashboardLite({ doctors, role, authToken }: ArztDashboardLit
 
         {isAdminRole && activeTab === "managed" ? (
           <section className="mt-6 rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
-            <h2 className="text-lg font-bold text-indigo-900">Verwaltete Profile</h2>
-            <p className="mt-1 text-sm text-indigo-800">Profile suchen, auswählen und direkt in die Bearbeitung übernehmen.</p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-lg font-bold text-indigo-900">Verwaltete Profile</h2>
+                <p className="mt-1 text-sm text-indigo-800">Freigeschaltete Konten und ihre zugeordneten Arztprofile.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <select
+                  value={managedProfileFilter}
+                  onChange={(event) => setManagedProfileFilter(event.target.value as ManagedProfileFilter)}
+                  className="rounded-lg border border-indigo-300 bg-white px-2 py-1.5 text-xs font-semibold text-indigo-800"
+                  aria-label="Profile filtern"
+                >
+                  <option value="all">Alle</option>
+                  <option value="active">Aktiv</option>
+                  <option value="inactive">Inaktiv</option>
+                  <option value="without_slots">Ohne freie Slots</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={() => void loadManagedProfiles()}
+                  className="rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-800"
+                >
+                  Aktualisieren
+                </button>
+              </div>
+            </div>
+
+            {managedProfilesError ? <p className="mt-3 text-sm font-semibold text-rose-700">{managedProfilesError}</p> : null}
+            {isLoadingManagedProfiles ? <p className="mt-3 text-sm text-indigo-800">Lädt...</p> : null}
+
+            {visibleManagedProfiles.length > 0 ? (
+              <div className="mt-4 overflow-x-auto rounded-xl border border-indigo-200 bg-white">
+                <table className="min-w-full text-left text-xs">
+                  <thead className="border-b border-indigo-100 bg-indigo-50 text-indigo-900">
+                    <tr>
+                      <th className="px-3 py-2 font-semibold">Arztprofil</th>
+                      <th className="px-3 py-2 font-semibold">Konto</th>
+                      <th className="px-3 py-2 font-semibold">Status</th>
+                      <th className="px-3 py-2 font-semibold">Freie Slots</th>
+                      <th className="px-3 py-2" aria-label="Aktion" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-indigo-100">
+                    {visibleManagedProfiles.map((profile) => (
+                      <tr key={`${profile.accountEmail}-${profile.doctorId}`}>
+                        <td className="px-3 py-2 text-slate-700">
+                          <p className="font-semibold text-slate-900">{profile.name}</p>
+                          <p>{profile.specialty} · {profile.district}</p>
+                          <p>{profile.address}</p>
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">{profile.accountEmail}</td>
+                        <td className="px-3 py-2">
+                          <span className={`inline-flex rounded-full px-2 py-0.5 font-semibold ${profile.isActive ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-700"}`}>
+                            {profile.isActive ? "Aktiv" : "Inaktiv"}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 font-semibold text-slate-800">{profile.openSlotsCount} (3 Tage)</td>
+                        <td className="px-3 py-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedDoctorId(profile.doctorId);
+                              setDoctorSearchTerm(profile.name);
+                              setRemoteSearchDoctors((current) => [
+                                ...current.filter((doctor) => doctor.id !== profile.doctorId),
+                                {
+                                  id: profile.doctorId,
+                                  name: profile.name,
+                                  specialty: profile.specialty,
+                                  district: profile.district,
+                                  address: profile.address,
+                                  providerType: "OEGK",
+                                },
+                              ]);
+                              setActiveTab("profil");
+                            }}
+                            className="rounded-lg bg-indigo-700 px-2.5 py-1 text-xs font-semibold text-white"
+                          >
+                            Profil öffnen
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void updateManagedProfileStatus(profile)}
+                            disabled={updatingAccountId === profile.accountId}
+                            className="mt-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 disabled:opacity-60"
+                          >
+                            {updatingAccountId === profile.accountId
+                              ? "Speichert..."
+                              : profile.isActive
+                                ? "Konto deaktivieren"
+                                : "Konto aktivieren"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void sendAdminPasswordReset(profile)}
+                            disabled={updatingAccountId === profile.accountId || !profile.isActive}
+                            className="mt-1 rounded-lg border border-sky-300 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-800 disabled:opacity-60"
+                          >
+                            Passwort-Reset senden
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : !isLoadingManagedProfiles ? (
+              <p className="mt-4 text-sm text-indigo-800">Für diesen Filter wurden keine zugeordneten Arztprofile gefunden.</p>
+            ) : null}
 
             <div className="mt-4">
               <label className="block text-sm">
@@ -2064,6 +2733,127 @@ export function ArztDashboardLite({ doctors, role, authToken }: ArztDashboardLit
                 </button>
               </div>
             ) : null}
+          </section>
+        ) : null}
+
+        {isAdminRole && activeTab === "arztliste" ? (
+          <section className="mt-6 rounded-2xl border border-violet-200 bg-violet-50 p-4">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold text-violet-950">Arztliste</h2>
+                <p className="mt-1 text-sm text-violet-900">Alle öffentlichen und selbst erstellten Arztprofile verwalten.</p>
+              </div>
+              <p className="text-xs font-semibold text-violet-800">{adminDoctorListTotal} Profile</p>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <input
+                value={adminDoctorListQuery}
+                onChange={(event) => setAdminDoctorListQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    void loadAdminDoctorList(1);
+                  }
+                }}
+                placeholder="Name, Fachbereich, Bezirk oder Adresse..."
+                className="min-w-60 flex-1 rounded-lg border border-violet-300 bg-white px-3 py-2 text-sm"
+              />
+              <button type="button" onClick={() => void loadAdminDoctorList(1)} className="rounded-lg bg-violet-700 px-3 py-2 text-xs font-semibold text-white">
+                Suchen
+              </button>
+            </div>
+            {adminDoctorListError ? <p className="mt-3 text-sm font-semibold text-rose-700">{adminDoctorListError}</p> : null}
+            {isLoadingAdminDoctorList ? <p className="mt-3 text-sm text-violet-900">Lädt...</p> : null}
+            {adminDoctorList.length > 0 ? (
+              <div className="mt-4 divide-y divide-violet-100 overflow-hidden rounded-xl border border-violet-200 bg-white">
+                {adminDoctorList.map((doctor) => (
+                  <article key={doctor.id} className="flex flex-wrap items-center justify-between gap-3 p-3 text-sm">
+                    <div>
+                      <p className="font-bold text-slate-900">{doctor.name}</p>
+                      <p className="text-slate-700">{doctor.specialty} · {doctor.district}</p>
+                      <p className="text-xs text-slate-600">{doctor.address}</p>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {doctor.isHidden ? <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-700">Ausgeblendet</span> : <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">Öffentlich</span>}
+                        {doctor.isCustomProfile ? <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold text-violet-800">Eigenes Profil</span> : <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-800">OGD</span>}
+                      </div>
+                      <div className="mt-2 grid gap-1 text-xs text-slate-700 sm:grid-cols-3 sm:gap-3">
+                        <p><span className="font-semibold">Profil:</span> {doctor.profileCompletion.percent}%</p>
+                        <p><span className="font-semibold">Letzter Login:</span> {doctor.account?.lastSignInAt ? formatDate(doctor.account.lastSignInAt) : "Noch nie"}</p>
+                        <p><span className="font-semibold">Letzter Slot:</span> {doctor.lastSlotPublishedAt ? formatDate(doctor.lastSlotPublishedAt) : "Noch keiner"}</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedAdminDoctorId((current) => (current === doctor.id ? "" : doctor.id))}
+                        className="rounded-lg border border-violet-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-violet-800"
+                      >
+                        {expandedAdminDoctorId === doctor.id ? "Details schließen" : "Details"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedDoctorId(doctor.id);
+                          setDoctorSearchTerm(doctor.name);
+                          setRemoteSearchDoctors((current) => [
+                            ...current.filter((item) => item.id !== doctor.id),
+                            {
+                              id: doctor.id,
+                              name: doctor.name,
+                              specialty: doctor.specialty,
+                              district: doctor.district,
+                              address: doctor.address,
+                              providerType: "OEGK",
+                            },
+                          ]);
+                          setActiveTab("profil");
+                        }}
+                        className="rounded-lg bg-violet-700 px-2.5 py-1.5 text-xs font-semibold text-white"
+                      >
+                        Profil bearbeiten
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void applyAdminDoctorAction(doctor, doctor.isHidden ? "restore" : "hide")}
+                        disabled={actingDoctorId === doctor.id}
+                        className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-60"
+                      >
+                        {doctor.isHidden ? "Wiederherstellen" : "Ausblenden"}
+                      </button>
+                      {doctor.isCustomProfile ? (
+                        <button
+                          type="button"
+                          onClick={() => void applyAdminDoctorAction(doctor, "delete")}
+                          disabled={actingDoctorId === doctor.id}
+                          className="rounded-lg bg-rose-600 px-2.5 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+                        >
+                          Endgültig löschen
+                        </button>
+                      ) : null}
+                    </div>
+                    {expandedAdminDoctorId === doctor.id ? (
+                      <div className="basis-full rounded-lg border border-violet-200 bg-violet-50 p-3 text-xs text-slate-700">
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <p><span className="font-semibold text-violet-950">Profil-ID:</span> {doctor.id}</p>
+                          <p><span className="font-semibold text-violet-950">Konto:</span> {doctor.account ? `${doctor.account.email} (${doctor.account.isActive ? "aktiv" : "inaktiv"})` : "Kein Arztkonto zugeordnet"}</p>
+                        </div>
+                        <p className="mt-2"><span className="font-semibold text-violet-950">Fehlende Profilangaben:</span> {doctor.profileCompletion.missing.length > 0 ? doctor.profileCompletion.missing.join(", ") : "Keine"}</p>
+                      </div>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
+            ) : !isLoadingAdminDoctorList ? (
+              <p className="mt-4 text-sm text-violet-900">Keine Arztprofile gefunden.</p>
+            ) : null}
+            <div className="mt-4 flex items-center justify-between gap-3 text-xs text-violet-900">
+              <button type="button" onClick={() => void loadAdminDoctorList(adminDoctorListPage - 1)} disabled={adminDoctorListPage <= 1 || isLoadingAdminDoctorList} className="rounded-lg border border-violet-300 bg-white px-3 py-1.5 font-semibold disabled:opacity-50">
+                Zurück
+              </button>
+              <span>Seite {adminDoctorListPage} von {adminDoctorListTotalPages}</span>
+              <button type="button" onClick={() => void loadAdminDoctorList(adminDoctorListPage + 1)} disabled={adminDoctorListPage >= adminDoctorListTotalPages || isLoadingAdminDoctorList} className="rounded-lg border border-violet-300 bg-white px-3 py-1.5 font-semibold disabled:opacity-50">
+                Weiter
+              </button>
+            </div>
           </section>
         ) : null}
 
@@ -2176,6 +2966,23 @@ export function ArztDashboardLite({ doctors, role, authToken }: ArztDashboardLit
                         className="w-full rounded-xl border border-slate-300 px-3 py-2"
                       />
                     </label>
+                    <label className="block text-sm sm:col-span-2">
+                      <span className="mb-1 block text-slate-600">Arztart</span>
+                      <select
+                        value={profileForm.providerType}
+                        onChange={(event) =>
+                          setProfileForm((prev) => ({
+                            ...prev,
+                            providerType: event.target.value === "Wahlarzt" || event.target.value === "Privat" ? event.target.value : "OEGK",
+                          }))
+                        }
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
+                      >
+                        <option value="OEGK">Kassenarzt</option>
+                        <option value="Wahlarzt">Wahlarzt</option>
+                        <option value="Privat">Privatarzt</option>
+                      </select>
+                    </label>
                   </div>
                 </section>
 
@@ -2211,6 +3018,17 @@ export function ArztDashboardLite({ doctors, role, authToken }: ArztDashboardLit
                       />
                       {profileFieldErrors.website ? <p className="mt-1 text-xs font-medium text-rose-700">{profileFieldErrors.website}</p> : null}
                     </label>
+                    <label className="block text-sm sm:col-span-2">
+                      <span className="mb-1 block text-slate-600">Direkter Online-Termin Link (z. B. meineakte.at, Doctena, Latido)</span>
+                      <input
+                        value={profileForm.bookingUrl}
+                        onChange={(event) => setProfileForm((prev) => ({ ...prev, bookingUrl: event.target.value }))}
+                        placeholder="https://termine.meineakte.at/de/bookAppointment/..."
+                        className={`w-full rounded-xl border px-3 py-2 ${profileFieldErrors.bookingUrl ? "border-rose-400 bg-rose-50" : "border-slate-300"}`}
+                      />
+                      <p className="mt-1 text-xs text-slate-500">Wenn eingetragen, wird im Arztprofil ein direkter Online-Termin-Button angezeigt.</p>
+                      {profileFieldErrors.bookingUrl ? <p className="mt-1 text-xs font-medium text-rose-700">{profileFieldErrors.bookingUrl}</p> : null}
+                    </label>
                   </div>
                 </section>
 
@@ -2228,6 +3046,50 @@ export function ArztDashboardLite({ doctors, role, authToken }: ArztDashboardLit
                     <p className="mt-1 text-xs text-slate-500">Mindestens 80 Zeichen für vollständiges Profil.</p>
                     <p className="mt-1 text-xs text-slate-500">Aktuell: {profileForm.about.trim().length} Zeichen</p>
                     {profileFieldErrors.about ? <p className="mt-1 text-xs font-medium text-rose-700">{profileFieldErrors.about}</p> : null}
+                  </label>
+                </section>
+
+                <section className="rounded-xl border border-slate-200 bg-white p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Zusätzliche Profilinformationen</p>
+                  <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                    <fieldset>
+                      <legend className="text-sm font-semibold text-slate-700">Gesprochene Sprachen</legend>
+                      <div className="mt-2 grid gap-2">
+                        {LANGUAGE_OPTIONS.map((language) => (
+                          <label key={language} className="inline-flex items-center gap-2 text-sm text-slate-600">
+                            <input
+                              type="checkbox"
+                              checked={profileForm.languages.includes(language)}
+                              onChange={() => setProfileForm((prev) => ({ ...prev, languages: toggleSelection(prev.languages, language) }))}
+                            />
+                            {language}
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+                    <fieldset>
+                      <legend className="text-sm font-semibold text-slate-700">Versicherung</legend>
+                      <div className="mt-2 grid gap-2">
+                        {INSURANCE_OPTIONS.map((insurance) => (
+                          <label key={insurance} className="inline-flex items-center gap-2 text-sm text-slate-600">
+                            <input
+                              type="checkbox"
+                              checked={profileForm.insuranceModels.includes(insurance)}
+                              onChange={() => setProfileForm((prev) => ({ ...prev, insuranceModels: toggleSelection(prev.insuranceModels, insurance) }))}
+                            />
+                            {insurance}
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+                  </div>
+                  <label className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={appointmentForm.acceptsNewPatients}
+                      onChange={(event) => setAppointmentForm((prev) => ({ ...prev, acceptsNewPatients: event.target.checked }))}
+                    />
+                    Neue Patienten werden aufgenommen
                   </label>
                 </section>
 
