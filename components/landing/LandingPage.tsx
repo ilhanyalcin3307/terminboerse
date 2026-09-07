@@ -29,6 +29,7 @@ type LandingPageProps = {
   totalDoctors?: number;
   byCategory?: Record<string, number>;
   byDistrictCategory?: Record<string, number>;
+  initialUpcomingDoctorSlots?: UpcomingDoctorSlotsItem[];
 };
 
 type LeadEntry = {
@@ -255,6 +256,7 @@ export function LandingPage({
   totalDoctors = 0,
   byCategory = {},
   byDistrictCategory = {},
+  initialUpcomingDoctorSlots = [],
 }: LandingPageProps) {
   const router = useRouter();
   const [leadModalOpen, setLeadModalOpen] = useState(false);
@@ -305,7 +307,7 @@ export function LandingPage({
   const [isDoctorSuggestionsOpen, setIsDoctorSuggestionsOpen] = useState(false);
   const doctorSearchBoxRef = useRef<HTMLDivElement | null>(null);
   const [source, setSource] = useState("hero");
-  const [upcomingDoctorSlots, setUpcomingDoctorSlots] = useState<UpcomingDoctorSlotsItem[]>([]);
+  const [upcomingDoctorSlots, setUpcomingDoctorSlots] = useState<UpcomingDoctorSlotsItem[]>(initialUpcomingDoctorSlots);
   const [topViewedDoctors, setTopViewedDoctors] = useState<TopViewedDoctorItem[]>([]);
 
   const [nameInput, setNameInput] = useState("");
