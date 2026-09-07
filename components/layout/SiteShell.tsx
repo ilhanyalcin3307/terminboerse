@@ -41,6 +41,20 @@ function getDisplayNameFromEmail(email: string) {
     .join(" ");
 }
 
+function hasArztbereichToken() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  try {
+    const raw = localStorage.getItem(ARZTBEREICH_STORAGE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as { token?: string }) : null;
+    return typeof parsed?.token === "string" && parsed.token.trim() !== "";
+  } catch {
+    return false;
+  }
+}
+
 export function SiteShell({ children }: SiteShellProps) {
   const [viennaDateTime, setViennaDateTime] = useState("");
   const [authState, setAuthState] = useState<HeaderAuthState>({
@@ -160,6 +174,10 @@ export function SiteShell({ children }: SiteShellProps) {
     } = supabaseClient.auth.onAuthStateChange((event, session) => {
       if (event === "SIGNED_OUT") {
         setAuthState({ kind: "guest", displayName: "Login", profileHref: "/login" });
+        return;
+      }
+
+      if (hasArztbereichToken()) {
         return;
       }
 

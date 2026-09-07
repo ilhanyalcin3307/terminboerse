@@ -4,7 +4,12 @@ export type TrackEventName =
   | "lead_submitted"
   | "specialty_selected"
   | "district_selected"
-  | "doctor_action_clicked";
+  | "doctor_action_clicked"
+  | "phone_click"
+  | "website_click"
+  | "route_click"
+  | "termin_anfrage_click"
+  | "arzt_login";
 
 export type TrackPayload = Record<string, string | number | boolean | undefined>;
 
@@ -18,6 +23,7 @@ type StoredEvent = {
 declare global {
   interface Window {
     gtag?: (...args: unknown[]) => void;
+    dataLayer?: Record<string, unknown>[];
   }
 }
 
