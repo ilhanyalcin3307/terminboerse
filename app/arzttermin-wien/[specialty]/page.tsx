@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ArztDirectory } from "@/components/arzt/ArztDirectory";
+import doctorsJson from "@/data/doctors.json";
+import { getCustomProfiles, getHiddenDoctorIds } from "@/lib/arztbereichAdminStore";
+import { mergeDoctorProfiles, normalizeDoctorsData, tokenizeDoctorSearch } from "@/lib/doctors";
 
 type SpecialtyLanding = {
   specialty: string;
@@ -56,7 +59,13 @@ const specialtyLandings: Record<string, SpecialtyLanding> = {
 
 type SpecialtyPageProps = {
   params: Promise<{ specialty: string }>;
+  searchParams: Promise<{ search?: string; category?: string; district?: string; page?: string }>;
 };
+
+function getPageNumber(value?: string) {
+  const page = Number(value);
+  return Number.isFinite(page) && page >= 1 ? Math.floor(page) : 1;
+}
 
 function getLanding(specialty: string) {
   return specialtyLandings[specialty];
@@ -66,17 +75,18 @@ export function generateStaticParams() {
   return Object.keys(specialtyLandings).map((specialty) => ({ specialty }));
 }
 
-export async function generateMetadata({ params }: SpecialtyPageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: SpecialtyPageProps): Promise<Metadata> {
   const { specialty } = await params;
   const landing = getLanding(specialty);
   if (!landing) {
     return { title: "Seite nicht gefunden | Terminbörse.at", robots: { index: false, follow: false } };
   }
+  const page = getPageNumber((await searchParams).page);
 
   return {
     title: landing.title,
     description: landing.description,
-    alternates: { canonical: `/arzttermin-wien/${specialty}` },
+    alternates: { canonical: `/arzttermin-wien/${specialty}${page > 1 ? `?page=${page}` : ""}` },
     openGraph: {
       title: landing.title,
       description: landing.description,
@@ -88,12 +98,31 @@ export async function generateMetadata({ params }: SpecialtyPageProps): Promise<
   };
 }
 
-export default async function SpecialtyPage({ params }: SpecialtyPageProps) {
+export default async function SpecialtyPage({ params, searchParams }: SpecialtyPageProps) {
   const { specialty } = await params;
   const landing = getLanding(specialty);
   if (!landing) {
     notFound();
   }
+  const query = await searchParams;
+  const initialSearchQuery = query.search ?? "";
+  const initialSelectedSpecialty = query.category ?? landing.specialty;
+  const initialSelectedDistrict = query.district ?? "Alle Bezirke";
+  const [customProfiles, hiddenDoctorIds] = await Promise.all([getCustomProfiles(), getHiddenDoctorIds()]);
+  const tokens = tokenizeDoctorSearch(initialSearchQuery);
+  const filteredDoctors = mergeDoctorProfiles(normalizeDoctorsData(doctorsJson), customProfiles)
+    .filter((doctor) => !hiddenDoctorIds.has(doctor.id))
+    .filter((doctor) => {
+      const searchable = tokenizeDoctorSearch(`${doctor.name} ${doctor.address} ${doctor.specialty} ${doctor.district}`).join(" ");
+      return (
+        (initialSelectedSpecialty === "Alle Fachbereiche" || doctor.specialty === initialSelectedSpecialty) &&
+        (initialSelectedDistrict === "Alle Bezirke" || doctor.district === initialSelectedDistrict) &&
+        tokens.every((token) => searchable.includes(token))
+      );
+    });
+  const totalPages = Math.max(1, Math.ceil(filteredDoctors.length / 24));
+  const page = Math.min(getPageNumber(query.page), totalPages);
+  const initialDoctors = filteredDoctors.slice((page - 1) * 24, page * 24);
 
   const breadcrumbSchema = {
     "@context": "https://schema.org",
@@ -114,7 +143,18 @@ export default async function SpecialtyPage({ params }: SpecialtyPageProps) {
         <p className="mt-3 max-w-3xl text-base leading-7 text-slate-700">{landing.intro}</p>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">{landing.guidance}</p>
       </section>
-      <ArztDirectory initialSelectedSpecialty={landing.specialty} />
+      <ArztDirectory
+        key={`${initialSearchQuery}::${initialSelectedSpecialty}::${initialSelectedDistrict}::${page}`}
+        initialDoctors={initialDoctors}
+        initialPage={page}
+        initialTotalMatches={filteredDoctors.length}
+        initialTotalPages={totalPages}
+        initialSearchParsed={query.page !== undefined}
+        paginationPath={`/arzttermin-wien/${specialty}`}
+        initialSearchQuery={initialSearchQuery}
+        initialSelectedSpecialty={initialSelectedSpecialty}
+        initialSelectedDistrict={initialSelectedDistrict}
+      />
     </div>
   );
 }
