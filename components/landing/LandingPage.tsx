@@ -13,7 +13,7 @@ import {
   MapPin,
   Search,
   ShieldCheck,
-  TrendingUp,
+  CalendarCheck,
   X,
 } from "lucide-react";
 import { DevAnalyticsPanel } from "@/components/analytics/DevAnalyticsPanel";
@@ -30,6 +30,7 @@ type LandingPageProps = {
   byCategory?: Record<string, number>;
   byDistrictCategory?: Record<string, number>;
   initialUpcomingDoctorSlots?: UpcomingDoctorSlotsItem[];
+  initialOnlineBookingDoctors?: DoctorRecord[];
 };
 
 type LeadEntry = {
@@ -68,24 +69,6 @@ type UpcomingDoctorSlotsItem = {
   specialty: string;
   district: string;
   slots: Array<{ id?: string; start: string; end: string }>;
-};
-
-type UpcomingDoctorSlotsPayload = {
-  ok?: boolean;
-  items?: UpcomingDoctorSlotsItem[];
-};
-
-type TopViewedDoctorItem = {
-  doctorId: string;
-  name: string;
-  specialty: string;
-  district: string;
-  slug: string;
-};
-
-type TopViewedDoctorsPayload = {
-  ok?: boolean;
-  items?: TopViewedDoctorItem[];
 };
 
 type ApothekeFeatureCollection = {
@@ -257,6 +240,7 @@ export function LandingPage({
   byCategory = {},
   byDistrictCategory = {},
   initialUpcomingDoctorSlots = [],
+  initialOnlineBookingDoctors = [],
 }: LandingPageProps) {
   const router = useRouter();
   const [leadModalOpen, setLeadModalOpen] = useState(false);
@@ -307,8 +291,7 @@ export function LandingPage({
   const [isDoctorSuggestionsOpen, setIsDoctorSuggestionsOpen] = useState(false);
   const doctorSearchBoxRef = useRef<HTMLDivElement | null>(null);
   const [source, setSource] = useState("hero");
-  const [upcomingDoctorSlots, setUpcomingDoctorSlots] = useState<UpcomingDoctorSlotsItem[]>(initialUpcomingDoctorSlots);
-  const [topViewedDoctors, setTopViewedDoctors] = useState<TopViewedDoctorItem[]>([]);
+  const upcomingDoctorSlots = initialUpcomingDoctorSlots;
 
   const [nameInput, setNameInput] = useState("");
   const [contactInput, setContactInput] = useState("");
@@ -450,78 +433,6 @@ export function LandingPage({
       window.clearTimeout(timeoutId);
     };
   }, [doctorNameQuery]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadTopViewedDoctors() {
-      try {
-        const response = await fetch("/api/doctors/top-viewed", { cache: "force-cache" });
-        if (!response.ok) {
-          return;
-        }
-        const payload = (await response.json()) as TopViewedDoctorsPayload;
-        if (isMounted && payload.ok && Array.isArray(payload.items)) {
-          setTopViewedDoctors(payload.items);
-        }
-      } catch {
-        if (isMounted) {
-          setTopViewedDoctors([]);
-        }
-      }
-    }
-
-    void loadTopViewedDoctors();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadUpcomingSlots() {
-      const controller = new AbortController();
-
-      try {
-        const response = await fetch("/api/doctors/upcoming-slots", {
-          method: "GET",
-          cache: "no-store",
-          signal: controller.signal,
-        });
-
-        if (!response.ok) {
-          return;
-        }
-
-        const payload = (await response.json()) as UpcomingDoctorSlotsPayload;
-        if (!payload.ok || !Array.isArray(payload.items)) {
-          return;
-        }
-
-        if (isMounted) {
-          setUpcomingDoctorSlots(payload.items);
-        }
-      } catch (error) {
-        if (error instanceof Error && error.name === "AbortError") {
-          return;
-        }
-        if (isMounted) {
-          setUpcomingDoctorSlots([]);
-        }
-      }
-    }
-
-    void loadUpcomingSlots();
-    const refreshIntervalId = window.setInterval(() => {
-      void loadUpcomingSlots();
-    }, 30000);
-
-    return () => {
-      isMounted = false;
-      window.clearInterval(refreshIntervalId);
-    };
-  }, []);
 
   useEffect(() => {
     function closeWhenClickedOutside(event: MouseEvent) {
@@ -802,6 +713,7 @@ export function LandingPage({
                   </div>
                   <Link
                     href={`/arzt/${encodeURIComponent(getDoctorSeoSlug({ id: item.doctorId, name: item.doctorName, specialty: item.specialty, district: item.district }))}`}
+                    prefetch={false}
                     className="mt-3 inline-flex rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500"
                   >
                     Profil öffnen
@@ -814,23 +726,45 @@ export function LandingPage({
           )}
         </section>
 
-        {topViewedDoctors.length > 0 ? (
-          <section className="rounded-2xl border border-sky-200 bg-sky-50 p-4 shadow-sm">
+        {initialOnlineBookingDoctors.length > 0 ? (
+          <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <p className="inline-flex items-center gap-2 text-sm font-semibold text-sky-950">
-                <TrendingUp className="h-4 w-4 text-sky-700" />
-                Meistgesuchte Ärzte
+              <p className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-950">
+                <CalendarCheck className="h-4 w-4 text-emerald-700" />
+                Online-Termin direkt buchen
               </p>
-              <p className="text-xs text-sky-800">Aktualisiert täglich</p>
+              <p className="text-xs text-emerald-800">Direkt bei der Ordination</p>
             </div>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-              {topViewedDoctors.map((doctor, index) => (
-                <Link key={doctor.doctorId} href={`/arzt/${encodeURIComponent(doctor.slug)}`} className="rounded-xl border border-sky-200 bg-white p-3 transition hover:border-sky-400 hover:bg-sky-50">
-                  <p className="text-xs font-bold text-sky-700">#{index + 1}</p>
-                  <p className="mt-1 text-sm font-semibold text-slate-900">{doctor.name}</p>
-                  <p className="mt-1 text-xs text-slate-600">{doctor.specialty}</p>
-                  <p className="text-xs text-slate-500">{doctor.district}</p>
-                </Link>
+              {initialOnlineBookingDoctors.map((doctor) => (
+                <article key={doctor.id} className="flex h-full flex-col rounded-xl border border-emerald-200 bg-white p-3">
+                  <div className="min-h-[132px]">
+                    <p className="text-sm font-semibold text-slate-900">{doctor.name}</p>
+                    <p className="mt-2 text-xs leading-5 text-slate-600">{doctor.specialty}</p>
+                    <p className="mt-3 inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-800">
+                      <MapPin className="h-3.5 w-3.5" />
+                      {doctor.district}
+                    </p>
+                  </div>
+                  <div className="mt-3 grid gap-2">
+                    <a
+                      href={doctor.bookingUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-2 py-1.5 text-xs font-bold text-white transition hover:bg-emerald-500"
+                    >
+                      <CalendarCheck className="h-3.5 w-3.5" />
+                      Online-Termin
+                    </a>
+                    <Link
+                      href={`/arzt/${encodeURIComponent(getDoctorSeoSlug(doctor))}`}
+                      prefetch={false}
+                      className="text-center text-xs font-semibold text-emerald-800 hover:underline"
+                    >
+                      Profil ansehen
+                    </Link>
+                  </div>
+                </article>
               ))}
             </div>
           </section>

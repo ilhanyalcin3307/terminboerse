@@ -28,6 +28,7 @@ type ArztDirectoryProps = {
   initialTotalMatches?: number;
   initialTotalPages?: number;
   paginationPath?: string;
+  defaultSpecialty?: string;
   initialSearchParsed?: boolean;
   initialSearchQuery?: string;
   initialSelectedSpecialty?: string;
@@ -138,6 +139,7 @@ export function ArztDirectory({
   initialTotalMatches = 0,
   initialTotalPages = 1,
   paginationPath = "/arzt",
+  defaultSpecialty = ALL_SPECIALTIES,
   initialSearchParsed = false,
   initialSearchQuery = "",
   initialSelectedSpecialty = ALL_SPECIALTIES,
@@ -184,7 +186,6 @@ export function ArztDirectory({
           });
 
           const response = await fetch(`/api/doctors?${params.toString()}`, {
-            cache: "no-store",
             signal: controller.signal,
           });
 
@@ -296,7 +297,7 @@ export function ArztDirectory({
     if (selectedDistrict !== ALL_DISTRICTS) {
       params.set("district", selectedDistrict);
     }
-    if (selectedSpecialty !== ALL_SPECIALTIES || paginationPath !== "/arzt") {
+    if (selectedSpecialty !== defaultSpecialty) {
       params.set("category", selectedSpecialty);
     }
     return `${paginationPath}?${params.toString()}`;
@@ -564,6 +565,7 @@ export function ArztDirectory({
               <div className="mt-4 grid gap-2 sm:grid-cols-2">
                 <Link
                   href={`/arzt/${encodeURIComponent(getDoctorSeoSlug(doctor))}`}
+                  prefetch={false}
                   onClick={(event) => {
                     event.stopPropagation();
                     trackEvent("cta_clicked", {
@@ -580,6 +582,7 @@ export function ArztDirectory({
                 </Link>
                 <Link
                   href={`/arzt/${encodeURIComponent(getDoctorSeoSlug(doctor))}`}
+                  prefetch={false}
                   onClick={(event) => {
                     event.stopPropagation();
                     trackEvent("cta_clicked", {

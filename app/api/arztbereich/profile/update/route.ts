@@ -4,6 +4,7 @@ import { getCustomProfiles, upsertDoctorProfile } from "@/lib/arztbereichAdminSt
 import { verifyArztbereichSessionToken } from "@/lib/arztbereichSession";
 import { findDoctorById, normalizeDoctorsData } from "@/lib/doctors";
 import type { DoctorService } from "@/lib/doctors";
+import { revalidatePublicDoctorProfiles } from "@/lib/publicDoctorProfiles";
 
 type ProfileUpdateBody = {
   token?: string;
@@ -99,6 +100,7 @@ export async function POST(request: Request) {
         typeof body.acceptsNewPatients === "boolean" ? body.acceptsNewPatients : source.acceptsNewPatients,
     });
 
+    revalidatePublicDoctorProfiles();
     return NextResponse.json({ ok: true, doctor: profile });
   } catch (error) {
     console.error("/api/arztbereich/profile/update failed", error);

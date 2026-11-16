@@ -609,7 +609,7 @@ export async function getStoredDoctorAccounts() {
   return state.doctorAccounts.slice();
 }
 
-export async function getCustomProfiles() {
+export async function getCustomProfiles(): Promise<CustomDoctorProfile[]> {
   if (hasSupabaseConfig()) {
     const supabase = createSupabaseAdminClient();
     const { data, error } = await supabase.from("arzt_custom_profiles").select("*");

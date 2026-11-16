@@ -605,6 +605,32 @@ Not:
    - Ham doktor ID yazımı yerine ad, uzmanlık veya bezirk ile arama ve profil önizlemeli seçim eklendi.
    - Mevcut eşleştirme verileri korunuyor; yalnız admin seçip kaydederse değişiyor.
 - Doğrulama: `npx tsc --noEmit` ve `npm run build` başarılı.
+
+## 45) Session Delta (2026-09-18) - Online-Terminbuchung auf der Startseite
+- Die Startseitenfläche `Meistgesuchte Ärzte` wurde entfernt, da Popularitätsdaten für die Terminvermittlung keinen direkten Nutzen bieten.
+- An derselben Stelle zeigt die Startseite nun bis zu fünf öffentliche Profile mit hinterlegter `bookingUrl` unter `Online-Termin direkt buchen`.
+- Der Button öffnet das externe Buchungssystem direkt; `Profil ansehen` führt weiterhin zur Arztprofilseite.
+- Die Auswahl erfolgt serverseitig in `app/page.tsx` aus den bereits geladenen, nicht ausgeblendeten Profilen. Die frühere clientseitige Anfrage an `/api/doctors/top-viewed` entfällt für die Startseite.
+- Doğrulama: `npx tsc --noEmit` başarılı.
+- Production deploy: `https://terminboerse-dfhkq9701-ilhanyalcin3307s-projects.vercel.app` wurde erfolgreich auf `https://www.terminboerse.at` aliasiert; die Live-Prüfung zeigt die neue Buchungsfläche mit Profilen.
+- Follow-up deploy: Die Karten erhielten einen festen Informationsbereich, sodass die Buchungsbuttons trotz unterschiedlich langer Namen/Fachrichtungen ausgerichtet bleiben. Bezirke werden nun als hervorgehobene Standort-Badges gezeigt. Deploy `https://terminboerse-ejm459zu8-ilhanyalcin3307s-projects.vercel.app` ist auf die Hauptdomain aliasiert; mobile Live-Sicht geprüft.
+
+## 46) Session Delta (2026-09-18) - Google Soft 404 für /arzt behoben
+- Root Cause aus der Google Search Console: Die URL `https://www.terminboerse.at/arzt` war crawlbar und indexierbar, erbte jedoch wegen fehlender Seitenmetadaten den globalen Canonical `https://www.terminboerse.at/`. Google bewertete die Arztliste deshalb als Soft 404 bzw. Duplikat der Startseite.
+- Fix in `app/arzt/page.tsx`: Eigene SEO-Metadaten mit Titel, Beschreibung, Open Graph und Canonical `/arzt` ergänzt. Filterparameter bleiben absichtlich nicht kanonisch.
+- Validierung: `npx tsc --noEmit` und `npm run build` erfolgreich. Production deploy `https://terminboerse-e2vt7x1yv-ilhanyalcin3307s-projects.vercel.app` auf `https://www.terminboerse.at` aliasiert. Live-HTML bestätigt `rel="canonical" href="https://www.terminboerse.at/arzt"`.
+- Zweiter Root Cause: Die Arztliste hatte im initialen Server-HTML keine Profile, weil `ArztDirectory` die Daten ausschließlich nach der Hydrierung über die API lud. `app/arzt/page.tsx` stellt nun die ersten 24 öffentlichen Profile serverseitig bereit; `ArztDirectory` zeigt diese ohne anfängliche Ladeansicht. Production deploy `https://terminboerse-rb1r4fcj7-ilhanyalcin3307s-projects.vercel.app` ist aliasiert. Googlebot-Abruf bestätigt Canonical `/arzt` sowie mehrere Arztprofile im ersten HTML. Sitemap-XML ist mit 6.649 URLs valide; der Search-Console-Hinweis „vorübergehender Verarbeitungsfehler“ ist serverseitig nicht reproduzierbar.
+
+## 47) Session Delta (2026-09-18) - Canonical- und Sitemap-Audit
+- Öffentliche Festseiten `kontakt`, `impressum` und `datenschutz` hatten keine eigenen Metadaten und erbten dadurch den Canonical der Startseite. Jede Seite liefert nun einen eigenen Titel, eine Beschreibung und ihren korrekten Canonical.
+- `handwerker` stellt derzeit keinen eigenständigen, passenden Inhalt bereit und wurde mit `noindex, nofollow` versehen. Die Dienst-/Nutzerseiten `login` und `profil` sowie `handwerker` wurden aus der Sitemap entfernt.
+- Validierung: `npx tsc --noEmit` und `npm run build` erfolgreich. Production deploy `https://terminboerse-62zhzj1d9-ilhanyalcin3307s-projects.vercel.app` ist auf die Hauptdomain aliasiert. Live-Prüfung bestätigt die drei Canonicals und 0 Sitemap-Einträge für `login`, `profil`, `handwerker`.
+
+## 48) Session Delta (2026-09-19) - Vercel CPU-Last reduziert
+- Anlass: Vercel Free Usage zeigte `Fluid Active CPU` über dem Limit, während Function Invocations und Edge Requests deutlich unter ihren Limits lagen.
+- Der Landing-Client pollte `/api/doctors/upcoming-slots` bisher beim Laden und danach alle 30 Sekunden ohne Cache. Das Polling wurde entfernt, da die Startseite ihre Slotdaten bereits serverseitig mit 30-Sekunden-Revalidierung erhält.
+- Der öffentliche Slot-Endpoint hat einen Shared-Cache (`s-maxage=60`, `stale-while-revalidate=300`). Öffentliche Profilseiten cachen die Profilbasis 5 Minuten sowie Buchungsstatus/Slotdarstellung 60 Sekunden über `unstable_cache`; Buchungs- und Admin-Aktionen bleiben unverändert und uncached.
+- Validierung: `npx tsc --noEmit` und `npm run build` erfolgreich. Production deploy `https://terminboerse-q28cj9ks5-ilhanyalcin3307s-projects.vercel.app` ist auf die Hauptdomain aliasiert; Live-Header bestätigen `x-vercel-cache: HIT` für den Slot-Endpoint.
 - Kalan Sürüm 1 işleri (uygulanmadı): merkezi listede profil doluluk/son giriş/son profil değişikliği alanları için kalıcı activity veri modeli ve gerekirse daha ayrıntılı doktor detay ekranı.
 
 ## 33) Session Delta (2026-09-01) - Admin Arztliste ve Güvenli Profil Kaldırma
@@ -772,3 +798,18 @@ Not:
   - Kart alt aksiyon butonlarına yeşil `Online-Termin` butonu eklendi.
 - Supabase SQL migration eklendi: `supabase/migrations/20260902_doctor_profile_booking_url.sql`.
 - Doğrulama: `npx tsc --noEmit` ve `npm run build` başarılı.
+
+## 46) Session Delta (2026-11-13) - Otomatik Profil Index / Noindex
+- Doktor detay metadata'sı ve sitemap aynı kaynak ve kurala bağlandı: `lib/publicDoctorProfiles.ts`, `lib/doctorIndexing.ts`.
+- Index için en az bir gerçek ek bilgi gerekir: hakkında yazısı, başlığı dolu hizmet, geçerli açık çalışma saati, açıkça kaydedilmiş dil, sigorta bilgisi, yeni hasta kabul/ret bilgisi, HTTP(S) online randevu linki veya aktif dahili online randevu.
+- Ham OGD ad/adres/telefon/website bilgileri, otomatik `Deutsch`, boş alanlar, yalnız `Geschlossen` günler ve geçersiz saat/link tek başına yeterli değildir.
+- Eksik profiller erişilebilir kalır; `noindex, follow` alır ve sitemap'ten çıkar. Gizli/silinmiş profiller yine yayınlanmaz. Nitelikli bilgi kaldırılırsa profil tekrar noindex olur.
+- `/arztbereich` zaten noindex olduğundan sitemap'ten çıkarıldı. `/login`, `/profil` ve `/auth/callback` için server layout metadata'sıyla noindex eklendi. Ana sayfa, liste, branş/rehber ve mevcut iletişim/yasal sayfalar korunur. Robots.txt taramayı engellemez; Google'ın noindex etiketini görebilmesi gerekir.
+- Profil kaydı, görünürlük/silme, onay/yeniden atama, randevu durumu ve Google Calendar bağlantı değişiklikleri ortak profil/randevu cache tag'lerini ve sitemap/profil yollarını geçersiz kılar. Sonraki istekte yeniden hesaplanır; ayrıca 300 saniyelik periyodik revalidation vardır. Cron veya manuel tarama gerekmez.
+- Test: `node --experimental-strip-types --test lib/doctorIndexing.test.mjs`.
+- Doğrulama: 6 kural testi geçti; izole yerel KV ile gerçek HTTP akışında boş profil, admin zenginleştirme, içerik kaldırma, gizleme/geri açma, dahili randevu açma/kapama ve harici randevu linki ekleme/kaldırma için metadata+sitemap geçişleri doğrulandı. Eski SEO slug yönlendirmesi, hesap sayfalarında noindex ve robots.txt tarama izni de kontrol edildi.
+- Production veri kontrolünde 41 doktor profili + 13 genel sayfa uygun bulundu (önceki sitemap: 6.646 URL). Bu sayılar veri güncellendikçe otomatik değişir.
+- Production build/type-check başarılı; değişen SEO dosyalarının lint kontrolünde hata yok. Proje genelindeki lint, bu işten önce mevcut 25 hata / 20 uyarı nedeniyle başarısız; kapsam dışı dosyalar değiştirilmedi.
+- Google'a gönderilecek sitemap: `https://www.terminboerse.at/sitemap.xml`. Index/noindex kararı uygulamanın sinyalidir; Google'ın işleme ve indeksleme zamanı garanti edilemez.
+- Production deploy tamamlandı: `https://terminboerse-1a9yogiar-ilhanyalcin3307s-projects.vercel.app` (alias: `https://www.terminboerse.at`).
+- Canlı doğrulama: sitemap'teki 54 URL'nin tamamı HTTP 200, `index, follow` ve doğru canonical döndürdü. Üç boş doktor profili ve altı hesap/yardımcı sayfasında noindex doğrulandı; eski SEO slug 308 yönlendirmesi ve robots.txt kontrolü başarılı. Canlı public dizin: 6.632 profil; 41 index'e uygun, 6.591 noindex. Production kayıtları test amacıyla değiştirilmedi.

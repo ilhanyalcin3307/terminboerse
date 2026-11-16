@@ -1,3 +1,11 @@
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Impressum | Terminbörse.at",
+  description: "Impressum und Angaben zum Diensteanbieter von Terminbörse.at.",
+  alternates: { canonical: "/impressum" },
+};
+
 export default function ImpressumPage() {
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6">

@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ArztDirectory } from "@/components/arzt/ArztDirectory";
-import doctorsJson from "@/data/doctors.json";
-import { getCustomProfiles, getHiddenDoctorIds } from "@/lib/arztbereichAdminStore";
-import { mergeDoctorProfiles, normalizeDoctorsData, tokenizeDoctorSearch } from "@/lib/doctors";
+import { getDirectoryPage } from "@/lib/doctorDirectory";
 
 type SpecialtyLanding = {
   specialty: string;
@@ -81,12 +79,16 @@ export async function generateMetadata({ params, searchParams }: SpecialtyPagePr
   if (!landing) {
     return { title: "Seite nicht gefunden | Terminbörse.at", robots: { index: false, follow: false } };
   }
-  const page = getPageNumber((await searchParams).page);
+  const query = await searchParams;
+  const page = getPageNumber(query.page);
 
   return {
     title: landing.title,
     description: landing.description,
     alternates: { canonical: `/arzttermin-wien/${specialty}${page > 1 ? `?page=${page}` : ""}` },
+    ...(query.search || query.district || (query.category && query.category !== landing.specialty)
+      ? { robots: { index: false, follow: true } }
+      : {}),
     openGraph: {
       title: landing.title,
       description: landing.description,
@@ -108,21 +110,8 @@ export default async function SpecialtyPage({ params, searchParams }: SpecialtyP
   const initialSearchQuery = query.search ?? "";
   const initialSelectedSpecialty = query.category ?? landing.specialty;
   const initialSelectedDistrict = query.district ?? "Alle Bezirke";
-  const [customProfiles, hiddenDoctorIds] = await Promise.all([getCustomProfiles(), getHiddenDoctorIds()]);
-  const tokens = tokenizeDoctorSearch(initialSearchQuery);
-  const filteredDoctors = mergeDoctorProfiles(normalizeDoctorsData(doctorsJson), customProfiles)
-    .filter((doctor) => !hiddenDoctorIds.has(doctor.id))
-    .filter((doctor) => {
-      const searchable = tokenizeDoctorSearch(`${doctor.name} ${doctor.address} ${doctor.specialty} ${doctor.district}`).join(" ");
-      return (
-        (initialSelectedSpecialty === "Alle Fachbereiche" || doctor.specialty === initialSelectedSpecialty) &&
-        (initialSelectedDistrict === "Alle Bezirke" || doctor.district === initialSelectedDistrict) &&
-        tokens.every((token) => searchable.includes(token))
-      );
-    });
-  const totalPages = Math.max(1, Math.ceil(filteredDoctors.length / 24));
-  const page = Math.min(getPageNumber(query.page), totalPages);
-  const initialDoctors = filteredDoctors.slice((page - 1) * 24, page * 24);
+  const result = await getDirectoryPage(initialSearchQuery, initialSelectedSpecialty, initialSelectedDistrict, getPageNumber(query.page));
+  const { page, totalPages } = result;
 
   const breadcrumbSchema = {
     "@context": "https://schema.org",
@@ -145,12 +134,13 @@ export default async function SpecialtyPage({ params, searchParams }: SpecialtyP
       </section>
       <ArztDirectory
         key={`${initialSearchQuery}::${initialSelectedSpecialty}::${initialSelectedDistrict}::${page}`}
-        initialDoctors={initialDoctors}
+        initialDoctors={result.doctors}
         initialPage={page}
-        initialTotalMatches={filteredDoctors.length}
+        initialTotalMatches={result.totalMatches}
         initialTotalPages={totalPages}
         initialSearchParsed={query.page !== undefined}
         paginationPath={`/arzttermin-wien/${specialty}`}
+        defaultSpecialty={landing.specialty}
         initialSearchQuery={initialSearchQuery}
         initialSelectedSpecialty={initialSelectedSpecialty}
         initialSelectedDistrict={initialSelectedDistrict}

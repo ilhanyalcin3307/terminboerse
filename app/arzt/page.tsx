@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import { ArztDirectory } from "@/components/arzt/ArztDirectory";
-import doctorsJson from "@/data/doctors.json";
-import { getCustomProfiles, getHiddenDoctorIds } from "@/lib/arztbereichAdminStore";
-import { mergeDoctorProfiles, normalizeDoctorsData, tokenizeDoctorSearch } from "@/lib/doctors";
+import { getDirectoryPage } from "@/lib/doctorDirectory";
 
 type ArztPageProps = {
   searchParams: Promise<{ search?: string; category?: string; district?: string; page?: string }>;
@@ -32,10 +30,12 @@ const metadata: Metadata = {
 };
 
 export async function generateMetadata({ searchParams }: ArztPageProps): Promise<Metadata> {
-  const page = getPageNumber((await searchParams).page);
+  const params = await searchParams;
+  const page = getPageNumber(params.page);
   return {
     ...metadata,
     alternates: { canonical: page > 1 ? `/arzt?page=${page}` : "/arzt" },
+    ...(params.search || params.category || params.district ? { robots: { index: false, follow: true } } : {}),
   };
 }
 
@@ -44,28 +44,15 @@ export default async function ArztPage({ searchParams }: ArztPageProps) {
   const initialSearchQuery = params.search ?? "";
   const initialSelectedSpecialty = params.category ?? "Alle Fachbereiche";
   const initialSelectedDistrict = params.district ?? "Alle Bezirke";
-  const [customProfiles, hiddenDoctorIds] = await Promise.all([getCustomProfiles(), getHiddenDoctorIds()]);
-  const tokens = tokenizeDoctorSearch(initialSearchQuery);
-  const filteredDoctors = mergeDoctorProfiles(normalizeDoctorsData(doctorsJson), customProfiles)
-    .filter((doctor) => !hiddenDoctorIds.has(doctor.id))
-    .filter((doctor) => {
-      const searchable = tokenizeDoctorSearch(`${doctor.name} ${doctor.address} ${doctor.specialty} ${doctor.district}`).join(" ");
-      return (
-        (initialSelectedSpecialty === "Alle Fachbereiche" || doctor.specialty === initialSelectedSpecialty) &&
-        (initialSelectedDistrict === "Alle Bezirke" || doctor.district === initialSelectedDistrict) &&
-        tokens.every((token) => searchable.includes(token))
-      );
-    });
-  const totalPages = Math.max(1, Math.ceil(filteredDoctors.length / 24));
-  const page = Math.min(getPageNumber(params.page), totalPages);
-  const initialDoctors = filteredDoctors.slice((page - 1) * 24, page * 24);
+  const result = await getDirectoryPage(initialSearchQuery, initialSelectedSpecialty, initialSelectedDistrict, getPageNumber(params.page));
+  const { page, totalPages } = result;
 
   return (
     <ArztDirectory
       key={`${initialSearchQuery}::${initialSelectedSpecialty}::${initialSelectedDistrict}::${page}`}
-      initialDoctors={initialDoctors}
+      initialDoctors={result.doctors}
       initialPage={page}
-      initialTotalMatches={filteredDoctors.length}
+      initialTotalMatches={result.totalMatches}
       initialTotalPages={totalPages}
       initialSearchParsed={params.page !== undefined}
       initialSearchQuery={initialSearchQuery}

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { upsertSchedulingStatusEntry } from "@/lib/arztbereichSchedulingStore";
 import { getPublicDoctorSchedulingStatus } from "@/lib/doctorSchedulingStatus";
 import { verifyArztbereichSessionToken } from "@/lib/arztbereichSession";
+import { revalidatePublicDoctorProfiles } from "@/lib/publicDoctorProfiles";
 
 type SchedulingStatusUpdateBody = {
   token?: string;
@@ -64,6 +65,7 @@ export async function POST(request: Request) {
     }
 
     await upsertSchedulingStatusEntry(doctorId, patch);
+    revalidatePublicDoctorProfiles();
     const status = await getPublicDoctorSchedulingStatus(doctorId);
 
     return NextResponse.json({ ok: true, status });

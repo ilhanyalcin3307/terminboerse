@@ -1,13 +1,12 @@
 import Link from "next/link";
 import type { Metadata } from "next";
+import { unstable_cache } from "next/cache";
 import { notFound, permanentRedirect } from "next/navigation";
 import { CalendarCheck, CalendarClock, Car, Footprints, MapPin, ParkingCircle, ShieldCheck, Stethoscope, TrainFront } from "lucide-react";
-import doctorsJson from "@/data/doctors.json";
-import { getCustomProfiles, getHiddenDoctorIds } from "@/lib/arztbereichAdminStore";
 import { AppointmentRequestModal } from "@/components/arzt/AppointmentRequestModal";
 import { DoctorProfileActions } from "@/components/arzt/DoctorProfileActions";
 import { getDoctorAvailableSlots } from "@/lib/googleCalendarAvailability";
-import { getPublicDoctorSchedulingStatus } from "@/lib/doctorSchedulingStatus";
+import { getCachedBookingStatus, getPublicDoctorProfiles } from "@/lib/publicDoctorProfiles";
 import { getNearestPharmacies, getNearestTransitStops, getNearestParkingGarages } from "@/lib/nearbyPlaces";
 import {
   findDoctorBySeoSlug,
@@ -18,8 +17,7 @@ import {
   getGoogleMapsDirectionsUrl,
   getGoogleMapsUrl,
   getGoogleMapsNearbySearchUrl,
-  mergeDoctorProfiles,
-  normalizeDoctorsData,
+  type DoctorRecord,
 } from "@/lib/doctors";
 
 type ArztDetailPageProps = {
@@ -27,7 +25,13 @@ type ArztDetailPageProps = {
   searchParams: Promise<{ claim?: string }>;
 };
 
-export const dynamic = "force-dynamic";
+export const revalidate = 300;
+
+const getCachedAvailableSlots = unstable_cache(
+  async (doctorId: string) => getDoctorAvailableSlots(doctorId),
+  ["public-doctor-available-slots"],
+  { revalidate: 60 },
+);
 
 function getBookingStatusLabel(
   reason: "not_onboarded" | "profile_incomplete" | "calendar_not_connected" | "scheduling_not_enabled" | "active",
@@ -71,6 +75,29 @@ function formatSlotDate(value: string) {
   }).format(date);
 }
 
+function getNearbyDoctors(currentDoctor: DoctorRecord, doctors: DoctorRecord[]) {
+  const districtDoctors = doctors.filter((candidate) => candidate.id !== currentDoctor.id && candidate.district === currentDoctor.district);
+  const sameSpecialty = districtDoctors.filter((candidate) => candidate.specialty === currentDoctor.specialty);
+  const candidates = sameSpecialty.length >= 3 ? sameSpecialty : districtDoctors;
+
+  return candidates
+    .map((candidate) => {
+      const hasCoordinates =
+        typeof currentDoctor.latitude === "number" &&
+        typeof currentDoctor.longitude === "number" &&
+        typeof candidate.latitude === "number" &&
+        typeof candidate.longitude === "number";
+      const distance = hasCoordinates
+        ? Math.hypot(candidate.latitude! - currentDoctor.latitude!, candidate.longitude! - currentDoctor.longitude!)
+        : Number.MAX_SAFE_INTEGER;
+
+      return { candidate, distance };
+    })
+    .sort((first, second) => first.distance - second.distance || first.candidate.name.localeCompare(second.candidate.name, "de"))
+    .slice(0, 3)
+    .map(({ candidate }) => candidate);
+}
+
 function EmptyProfileValue({ label, specialty, district }: { label: string; specialty: string; district: string }) {
   return (
     <span className="text-sm text-slate-400">
@@ -81,10 +108,7 @@ function EmptyProfileValue({ label, specialty, district }: { label: string; spec
 
 export async function generateMetadata({ params }: Omit<ArztDetailPageProps, "searchParams">): Promise<Metadata> {
   const { id } = await params;
-  const [customProfiles, hiddenDoctorIds] = await Promise.all([getCustomProfiles(), getHiddenDoctorIds()]);
-  const doctors = mergeDoctorProfiles(normalizeDoctorsData(doctorsJson), customProfiles).filter(
-    (doctor) => !hiddenDoctorIds.has(doctor.id),
-  );
+  const { doctors, indexableDoctorIds } = await getPublicDoctorProfiles();
   const doctor = findDoctorBySeoSlug(doctors, decodeURIComponent(id));
 
   if (!doctor) {
@@ -104,6 +128,10 @@ export async function generateMetadata({ params }: Omit<ArztDetailPageProps, "se
   return {
     title,
     description,
+    robots: {
+      index: indexableDoctorIds.includes(doctor.id),
+      follow: true,
+    },
     alternates: {
       canonical: `/arzt/${canonicalSlug}`,
     },
@@ -122,10 +150,7 @@ export default async function ArztDetailPage({ params, searchParams }: ArztDetai
   const { id } = await params;
   const { claim } = await searchParams;
 
-  const [customProfiles, hiddenDoctorIds] = await Promise.all([getCustomProfiles(), getHiddenDoctorIds()]);
-  const doctors = mergeDoctorProfiles(normalizeDoctorsData(doctorsJson), customProfiles).filter(
-    (doctor) => !hiddenDoctorIds.has(doctor.id),
-  );
+  const { doctors } = await getPublicDoctorProfiles();
   const requestedSlug = decodeURIComponent(id).trim().toLowerCase();
   const doctor = findDoctorBySeoSlug(doctors, requestedSlug);
 
@@ -138,6 +163,7 @@ export default async function ArztDetailPage({ params, searchParams }: ArztDetai
     permanentRedirect(`/arzt/${encodeURIComponent(canonicalSlug)}`);
   }
 
+  const nearbyDoctors = getNearbyDoctors(doctor, doctors);
   const workingHours = getDoctorWorkingHours(doctor);
   const mapsUrl = getGoogleMapsUrl(doctor);
   const mapsEmbedUrl = getGoogleMapsEmbedUrl(doctor);
@@ -145,13 +171,13 @@ export default async function ArztDetailPage({ params, searchParams }: ArztDetai
   const transitUrl = getGoogleMapsDirectionsUrl(doctor, "transit");
   const walkingUrl = getGoogleMapsDirectionsUrl(doctor, "walking");
   const parkingUrl = getGoogleMapsNearbySearchUrl(doctor, "Parkgarage");
-  const bookingStatus = await getPublicDoctorSchedulingStatus(doctor.id);
+  const bookingStatus = await getCachedBookingStatus(doctor.id);
   const bookingStatusLabel = getBookingStatusLabel(bookingStatus.reason, doctor.name, "short");
   const bookingStatusDetail = getBookingStatusLabel(bookingStatus.reason, doctor.name, "detailed");
   const nearestPharmacies = getNearestPharmacies(doctor.latitude, doctor.longitude, 3);
   const nearestTransitStops = getNearestTransitStops(doctor.latitude, doctor.longitude, 3);
   const nearestParkingGarages = getNearestParkingGarages(doctor.latitude, doctor.longitude, 3);
-  const slotResult = await getDoctorAvailableSlots(doctor.id);
+  const slotResult = await getCachedAvailableSlots(doctor.id);
   const visibleSlots = slotResult.slots.slice(0, 8);
   const profileFields = [
     { label: "Über mich", value: doctor.about },
@@ -314,6 +340,35 @@ export default async function ArztDetailPage({ params, searchParams }: ArztDetai
               ) : null}
             </div>
           </section>
+
+          {nearbyDoctors.length > 0 ? (
+            <section className="mt-8 border-t border-slate-200 pt-6" aria-labelledby="nearby-doctors-heading">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Weitere Optionen in der Nähe</p>
+              <h3 id="nearby-doctors-heading" className="mt-1 text-xl font-bold text-slate-900">
+                Weitere Ärzte im {doctor.district}
+              </h3>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                Vergleiche weitere Ordinationen in derselben Region und finde den passenden Kontakt für dein Anliegen.
+              </p>
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                {nearbyDoctors.map((nearbyDoctor) => (
+                  <Link
+                    key={nearbyDoctor.id}
+                    href={`/arzt/${encodeURIComponent(getDoctorSeoSlug(nearbyDoctor))}`}
+                    prefetch={false}
+                    className="rounded-2xl border border-slate-200 bg-slate-50 p-4 transition hover:border-sky-300 hover:bg-sky-50"
+                  >
+                    <p className="text-sm font-bold text-slate-900">{nearbyDoctor.name}</p>
+                    <p className="mt-1 text-sm text-sky-700">{nearbyDoctor.specialty}</p>
+                    <p className="mt-3 inline-flex items-start gap-1.5 text-xs leading-5 text-slate-600">
+                      <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-600" />
+                      <span>{nearbyDoctor.address}</span>
+                    </p>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
           <div className="mt-6">
             {bookingStatus.canBookOnline ? (

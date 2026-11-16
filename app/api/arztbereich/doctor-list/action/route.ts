@@ -3,6 +3,7 @@ import doctorsJson from "@/data/doctors.json";
 import { deleteCustomDoctorProfile, getCustomProfiles, setDoctorProfileVisibility } from "@/lib/arztbereichAdminStore";
 import { verifyArztbereichSessionToken } from "@/lib/arztbereichSession";
 import { findDoctorById, normalizeDoctorsData } from "@/lib/doctors";
+import { revalidatePublicDoctorProfiles } from "@/lib/publicDoctorProfiles";
 
 type DoctorActionBody = {
   token?: string;
@@ -39,6 +40,7 @@ export async function POST(request: Request) {
       await setDoctorProfileVisibility({ doctorId, hidden: body.action === "hide", adminEmail: session.email });
     }
 
+    revalidatePublicDoctorProfiles();
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("/api/arztbereich/doctor-list/action failed", error);

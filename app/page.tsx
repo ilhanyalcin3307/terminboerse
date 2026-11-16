@@ -1,7 +1,6 @@
 import { LandingPage } from "@/components/landing/LandingPage";
-import doctorsJson from "@/data/doctors.json";
-import { getCustomProfiles, getHiddenDoctorIds } from "@/lib/arztbereichAdminStore";
-import { getLandingDoctorData, mergeDoctorProfiles, normalizeDoctorsData } from "@/lib/doctors";
+import { getDirectoryDoctors } from "@/lib/doctorDirectory";
+import { getLandingDoctorData } from "@/lib/doctors";
 import { getUpcomingDoctorSlots } from "@/lib/upcomingDoctorSlots";
 
 export const revalidate = 30;
@@ -86,12 +85,10 @@ const webpageSchema = {
 };
 
 export default async function HomePage() {
-  const [customProfiles, hiddenDoctorIds] = await Promise.all([getCustomProfiles(), getHiddenDoctorIds()]);
-  const doctors = mergeDoctorProfiles(normalizeDoctorsData(doctorsJson), customProfiles).filter(
-    (doctor) => !hiddenDoctorIds.has(doctor.id),
-  );
+  const doctors = await getDirectoryDoctors();
   const landingData = getLandingDoctorData(doctors);
   const upcomingDoctorSlots = await getUpcomingDoctorSlots(doctors);
+  const onlineBookingDoctors = doctors.filter((doctor) => Boolean(doctor.bookingUrl)).slice(0, 5);
   return (
     <>
       <script
@@ -118,6 +115,7 @@ export default async function HomePage() {
         byCategory={landingData.byCategory}
         byDistrictCategory={landingData.byDistrictCategory}
         initialUpcomingDoctorSlots={upcomingDoctorSlots}
+        initialOnlineBookingDoctors={onlineBookingDoctors}
       />
     </>
   );

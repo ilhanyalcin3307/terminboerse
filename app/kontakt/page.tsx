@@ -1,3 +1,11 @@
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Kontakt | Terminbörse.at",
+  description: "Kontakt und Partnerschaftsanfragen für Terminbörse.at.",
+  alternates: { canonical: "/kontakt" },
+};
+
 export default function KontaktPage() {
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6">

@@ -1,7 +1,8 @@
 import type { MetadataRoute } from "next";
-import doctorsJson from "@/data/doctors.json";
-import { getCustomProfiles, getHiddenDoctorIds } from "@/lib/arztbereichAdminStore";
-import { getDoctorSeoSlug, mergeDoctorProfiles, normalizeDoctorsData } from "@/lib/doctors";
+import { getDoctorSeoSlug } from "@/lib/doctors";
+import { getPublicDoctorProfiles } from "@/lib/publicDoctorProfiles";
+
+export const revalidate = 300;
 
 const BASE_URL = "https://www.terminboerse.at";
 const SPECIALTY_LANDING_PATHS = ["hausarzt", "hautarzt", "frauenarzt", "zahnarzt", "kinderarzt"];
@@ -30,21 +31,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.75,
     })),
     {
-      url: `${BASE_URL}/arztbereich`,
-      changeFrequency: "weekly",
-      priority: 0.8,
-    },
-    {
-      url: `${BASE_URL}/login`,
-      changeFrequency: "monthly",
-      priority: 0.6,
-    },
-    {
-      url: `${BASE_URL}/profil`,
-      changeFrequency: "monthly",
-      priority: 0.5,
-    },
-    {
       url: `${BASE_URL}/kontakt`,
       changeFrequency: "monthly",
       priority: 0.6,
@@ -59,22 +45,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "yearly",
       priority: 0.3,
     },
-    {
-      url: `${BASE_URL}/handwerker`,
-      changeFrequency: "monthly",
-      priority: 0.4,
-    },
   ];
 
-  const [customProfiles, hiddenDoctorIds] = await Promise.all([getCustomProfiles(), getHiddenDoctorIds()]);
-  const doctors = mergeDoctorProfiles(normalizeDoctorsData(doctorsJson), customProfiles).filter(
-    (doctor) => !hiddenDoctorIds.has(doctor.id),
-  );
+  const { doctors, indexableDoctorIds } = await getPublicDoctorProfiles();
+  const indexableIds = new Set(indexableDoctorIds);
   const seen = new Set<string>();
 
   const doctorRoutes: MetadataRoute.Sitemap = doctors
     .filter((doctor) => {
-      if (!doctor.id || seen.has(doctor.id)) {
+      if (!doctor.id || seen.has(doctor.id) || !indexableIds.has(doctor.id)) {
         return false;
       }
       seen.add(doctor.id);

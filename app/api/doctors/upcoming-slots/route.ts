@@ -12,7 +12,14 @@ export async function GET() {
     );
     const items = await getUpcomingDoctorSlots(doctors);
 
-    return NextResponse.json({ ok: true, items });
+    return NextResponse.json(
+      { ok: true, items },
+      {
+        headers: {
+          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+        },
+      },
+    );
   } catch (error) {
     return NextResponse.json(
       {

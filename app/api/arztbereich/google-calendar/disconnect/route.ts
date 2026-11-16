@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { verifyArztbereichSessionToken } from "@/lib/arztbereichSession";
 import { removeGoogleCalendarConnection } from "@/lib/googleCalendarConnectionStore";
 import { upsertSchedulingStatusEntry } from "@/lib/arztbereichSchedulingStore";
+import { revalidatePublicDoctorProfiles } from "@/lib/publicDoctorProfiles";
 
 type DisconnectBody = {
   token?: string;
@@ -42,6 +43,7 @@ export async function POST(request: Request) {
       schedulingEnabled: false,
     });
 
+    revalidatePublicDoctorProfiles();
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("/api/arztbereich/google-calendar/disconnect failed", error);

@@ -319,16 +319,47 @@ export async function getDoctorCommunitySnapshot(doctorId: string): Promise<Doct
 }
 
 export async function getDoctorCommunityPreviews(doctorIds: string[]) {
-  return Promise.all(doctorIds.map(async (doctorId) => {
-    const snapshot = await getDoctorCommunitySnapshot(doctorId);
+  const counters = new Map<string, DoctorViewCountersEntry>();
+  const ids = [...new Set(doctorIds.map((id) => id.trim()).filter(Boolean))];
+  if (hasSupabaseConfig() && ids.length > 0) {
+    const client = createSupabaseAdminClient();
+    const { data, error } = await client
+      .from(SUPABASE_TABLE)
+      .select("doctor_id, profile_views, list_impressions, updated_at")
+      .in("doctor_id", ids);
+    if (error) {
+      console.error("Doctor community preview counters could not be loaded:", error.message);
+    } else {
+      for (const row of data ?? []) {
+        counters.set(row.doctor_id, {
+          doctorId: row.doctor_id,
+          profileViews: normalizeCount(row.profile_views),
+          listImpressions: normalizeCount(row.list_impressions),
+          updatedAt: row.updated_at ?? new Date(0).toISOString(),
+        });
+      }
+    }
+  }
+  if (ids.some((id) => !counters.has(id))) {
+    const state = await loadViewState();
+    for (const id of ids) {
+      if (!counters.has(id)) {
+        const entry = getEntryByDoctorId(state, id);
+        if (entry) counters.set(id, entry);
+      }
+    }
+  }
+  return doctorIds.map((doctorId) => {
+    const base = getSeededBaseMetrics(doctorId);
+    const entry = counters.get(doctorId.trim());
     return {
       doctorId,
-      averageRating: snapshot.averageRating,
-      ratingsCount: snapshot.ratingsCount,
-      commentsCount: snapshot.commentsCount,
-      viewsCount: snapshot.viewsCount,
+      averageRating: base.averageRating,
+      ratingsCount: base.ratingsCount,
+      commentsCount: base.commentsCount,
+      viewsCount: entry ? entry.profileViews + entry.listImpressions : 0,
     };
-  }));
+  });
 }
 
 export async function getTopViewedDoctorIds(limit: number) {

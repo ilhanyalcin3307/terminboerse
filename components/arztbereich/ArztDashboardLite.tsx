@@ -8,12 +8,15 @@ import {
   ChevronRight,
   Clock3,
   Eye,
+  EyeOff,
   MessageSquareText,
+  MousePointerClick,
   Plus,
   RefreshCw,
   Save,
   Search,
   ShieldCheck,
+  Trash2,
   UserRound,
   XCircle,
 } from "lucide-react";
@@ -86,6 +89,15 @@ type AdminDoctorListItem = {
   specialty: string;
   district: string;
   address: string;
+  providerType: "OEGK" | "Wahlarzt" | "Privat";
+  phone?: string;
+  email?: string;
+  website?: string;
+  bookingUrl?: string;
+  about?: string;
+  languages?: string[];
+  insuranceModels?: string[];
+  acceptsNewPatients?: boolean;
   isHidden: boolean;
   isCustomProfile: boolean;
   profileCompletion: {
@@ -238,6 +250,38 @@ const SELECTED_DOCTOR_ID_STORAGE_KEY = "terminboerse_arzt_selected_doctor_id";
 const SELECTED_DOCTOR_STORAGE_KEY = "terminboerse_arzt_selected_doctor";
 const LANGUAGE_OPTIONS = ["Deutsch", "Englisch", "Türkisch", "Arabisch", "Bosnisch/Kroatisch/Serbisch", "Französisch", "Spanisch", "Italienisch"];
 const INSURANCE_OPTIONS = ["OEGK", "Wahlarzt", "Privat", "SVS", "BVAEB", "KFA", "Selbstzahler"];
+
+function InlineMultiSelect({
+  value,
+  options,
+  onChange,
+}: {
+  value: string[];
+  options: string[];
+  onChange: (nextValue: string[]) => void;
+}) {
+  const selectedLabel = value.length > 0 ? value.join(", ") : "Auswählen";
+
+  return (
+    <details className="relative w-48">
+      <summary className="cursor-pointer list-none rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800">
+        <span className="block truncate" title={selectedLabel}>{selectedLabel}</span>
+      </summary>
+      <div className="absolute left-0 top-full z-30 mt-1 max-h-64 w-64 overflow-auto rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
+        {options.map((option) => (
+          <label key={option} className="flex items-center gap-2 rounded px-2 py-1.5 text-xs text-slate-700 hover:bg-slate-50">
+            <input
+              type="checkbox"
+              checked={value.includes(option)}
+              onChange={() => onChange(value.includes(option) ? value.filter((item) => item !== option) : [...value, option])}
+            />
+            {option}
+          </label>
+        ))}
+      </div>
+    </details>
+  );
+}
 
 function formatDate(value: string) {
   const date = new Date(value);
@@ -594,6 +638,9 @@ export function ArztDashboardLite({ doctors, role, authToken }: ArztDashboardLit
   const [adminDoctorListTotal, setAdminDoctorListTotal] = useState(0);
   const [isLoadingAdminDoctorList, setIsLoadingAdminDoctorList] = useState(false);
   const [adminDoctorListError, setAdminDoctorListError] = useState("");
+  const [adminDoctorListMessage, setAdminDoctorListMessage] = useState("");
+  const [adminDoctorDrafts, setAdminDoctorDrafts] = useState<Record<string, Partial<Pick<AdminDoctorListItem, "name" | "specialty" | "district" | "address" | "providerType" | "phone" | "email" | "website" | "bookingUrl" | "about" | "languages" | "insuranceModels" | "acceptsNewPatients">>>>({});
+  const [savingAdminDoctorId, setSavingAdminDoctorId] = useState("");
   const [actingDoctorId, setActingDoctorId] = useState("");
   const [expandedAdminDoctorId, setExpandedAdminDoctorId] = useState("");
   const [operationsSummary, setOperationsSummary] = useState<OperationsSummary | null>(null);
@@ -693,6 +740,10 @@ export function ArztDashboardLite({ doctors, role, authToken }: ArztDashboardLit
 
   const profileCompletion = useMemo(() => computeProfileCompletion(profileForm), [profileForm]);
   const profileSectionProgress = useMemo(() => computeProfileSectionProgress(profileForm), [profileForm]);
+  const adminSpecialtyOptions = useMemo(
+    () => Array.from(new Set(adminDoctorList.map((doctor) => doctor.specialty).filter(Boolean))).sort((first, second) => first.localeCompare(second, "de")),
+    [adminDoctorList],
+  );
   const weekDays = useMemo(() => {
     return Array.from({ length: 7 }, (_, index) => addDays(calendarAnchorDate, index));
   }, [calendarAnchorDate]);
@@ -1538,6 +1589,7 @@ export function ArztDashboardLite({ doctors, role, authToken }: ArztDashboardLit
 
     setIsLoadingAdminDoctorList(true);
     setAdminDoctorListError("");
+    setAdminDoctorListMessage("");
     try {
       const response = await fetch("/api/arztbereich/doctor-list", {
         method: "POST",
@@ -1561,6 +1613,97 @@ export function ArztDashboardLite({ doctors, role, authToken }: ArztDashboardLit
       setAdminDoctorListError(error instanceof Error ? error.message : "Arztliste konnte nicht geladen werden.");
     } finally {
       setIsLoadingAdminDoctorList(false);
+    }
+  }
+
+  function getAdminDoctorValue<K extends keyof Pick<AdminDoctorListItem, "name" | "specialty" | "district" | "address" | "providerType" | "phone" | "email" | "website" | "bookingUrl" | "about" | "languages" | "insuranceModels" | "acceptsNewPatients">>(
+    doctor: AdminDoctorListItem,
+    field: K,
+  ) {
+    const draft = adminDoctorDrafts[doctor.id]?.[field];
+    return draft === undefined ? doctor[field] ?? "" : draft;
+  }
+
+  function updateAdminDoctorDraft(
+    doctorId: string,
+    field: keyof Pick<AdminDoctorListItem, "name" | "specialty" | "district" | "address" | "providerType" | "phone" | "email" | "website" | "bookingUrl" | "about" | "languages" | "insuranceModels" | "acceptsNewPatients">,
+    value: string | string[] | boolean,
+  ) {
+    setAdminDoctorDrafts((current) => ({
+      ...current,
+      [doctorId]: {
+        ...current[doctorId],
+        [field]: value,
+      },
+    }));
+  }
+
+  async function saveAdminDoctorRow(doctor: AdminDoctorListItem) {
+    if (!authToken || role !== "admin") {
+      return;
+    }
+
+    const name = String(getAdminDoctorValue(doctor, "name")).trim();
+    const specialty = String(getAdminDoctorValue(doctor, "specialty")).trim();
+    const district = String(getAdminDoctorValue(doctor, "district")).trim();
+    const address = String(getAdminDoctorValue(doctor, "address")).trim();
+    if (name.length < 3 || specialty.length < 3 || district.length < 2 || address.length < 6) {
+      setAdminDoctorListError("Name, Fachbereich, Bezirk und Adresse müssen ausgefüllt sein.");
+      return;
+    }
+
+    setSavingAdminDoctorId(doctor.id);
+    setAdminDoctorListError("");
+    setAdminDoctorListMessage("");
+    try {
+      const response = await fetch("/api/arztbereich/profile/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token: authToken,
+          doctorId: doctor.id,
+          name,
+          specialty,
+          district,
+          address,
+          providerType: getAdminDoctorValue(doctor, "providerType"),
+          phone: String(getAdminDoctorValue(doctor, "phone")).trim(),
+          email: String(getAdminDoctorValue(doctor, "email")).trim(),
+          website: String(getAdminDoctorValue(doctor, "website")).trim(),
+          bookingUrl: String(getAdminDoctorValue(doctor, "bookingUrl")).trim(),
+          about: String(getAdminDoctorValue(doctor, "about")).trim(),
+          languages: String(getAdminDoctorValue(doctor, "languages"))
+            .split(",")
+            .map((value) => value.trim())
+            .filter(Boolean),
+          insuranceModels: String(getAdminDoctorValue(doctor, "insuranceModels"))
+            .split(",")
+            .map((value) => value.trim())
+            .filter(Boolean),
+          acceptsNewPatients:
+            String(getAdminDoctorValue(doctor, "acceptsNewPatients")) === "true"
+              ? true
+              : String(getAdminDoctorValue(doctor, "acceptsNewPatients")) === "false"
+                ? false
+                : undefined,
+        }),
+      });
+      const payload = (await response.json()) as { ok?: boolean; error?: string };
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error ?? "Arztprofil konnte nicht gespeichert werden.");
+      }
+
+      setAdminDoctorDrafts((current) => {
+        const next = { ...current };
+        delete next[doctor.id];
+        return next;
+      });
+      setAdminDoctorListMessage(`${name} wurde gespeichert.`);
+      await loadAdminDoctorList(adminDoctorListPage);
+    } catch (error) {
+      setAdminDoctorListError(error instanceof Error ? error.message : "Arztprofil konnte nicht gespeichert werden.");
+    } finally {
+      setSavingAdminDoctorId("");
     }
   }
 
@@ -2762,8 +2905,177 @@ export function ArztDashboardLite({ doctors, role, authToken }: ArztDashboardLit
               </button>
             </div>
             {adminDoctorListError ? <p className="mt-3 text-sm font-semibold text-rose-700">{adminDoctorListError}</p> : null}
+            {adminDoctorListMessage ? <p className="mt-3 text-sm font-semibold text-emerald-700">{adminDoctorListMessage}</p> : null}
             {isLoadingAdminDoctorList ? <p className="mt-3 text-sm text-violet-900">Lädt...</p> : null}
             {adminDoctorList.length > 0 ? (
+              <div className="mt-4 overflow-x-auto rounded-xl border border-violet-200 bg-white">
+                <table className="min-w-[2050px] w-full border-collapse text-left text-xs">
+                  <thead className="bg-violet-100 text-violet-950">
+                    <tr>
+                      <th className="sticky left-0 z-10 border-b border-violet-200 bg-violet-100 px-3 py-3 font-bold">Name</th>
+                      <th className="border-b border-violet-200 px-3 py-3 font-bold">Fachbereich</th>
+                      <th className="border-b border-violet-200 px-3 py-3 font-bold">Bezirk</th>
+                      <th className="border-b border-violet-200 px-3 py-3 font-bold">Adresse</th>
+                      <th className="border-b border-violet-200 px-3 py-3 font-bold">Telefon</th>
+                      <th className="border-b border-violet-200 px-3 py-3 font-bold">E-Mail</th>
+                      <th className="border-b border-violet-200 px-3 py-3 font-bold">Website</th>
+                      <th className="border-b border-violet-200 px-3 py-3 font-bold">Online-Termin-Link</th>
+                      <th className="border-b border-violet-200 px-3 py-3 font-bold">Über mich</th>
+                      <th className="border-b border-violet-200 px-3 py-3 font-bold">Sprachen</th>
+                      <th className="border-b border-violet-200 px-3 py-3 font-bold">Versicherungen</th>
+                      <th className="border-b border-violet-200 px-3 py-3 font-bold">Typ</th>
+                      <th className="border-b border-violet-200 px-3 py-3 font-bold">Neue Patienten</th>
+                      <th className="border-b border-violet-200 px-3 py-3 font-bold">Profil</th>
+                      <th className="border-b border-violet-200 px-3 py-3 font-bold">Aktionen</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {adminDoctorList.map((doctor) => (
+                      <tr key={doctor.id} className="align-top odd:bg-white even:bg-violet-50/40">
+                        {(["name"] as const).map((field) => (
+                          <td key={field} className="border-b border-violet-100 px-2 py-2">
+                            <input
+                              value={String(getAdminDoctorValue(doctor, field))}
+                              onChange={(event) => updateAdminDoctorDraft(doctor.id, field, event.target.value)}
+                              className="w-36 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-300"
+                            />
+                          </td>
+                        ))}
+                        <td className="border-b border-violet-100 px-2 py-2">
+                          <select
+                            value={String(getAdminDoctorValue(doctor, "specialty"))}
+                            onChange={(event) => updateAdminDoctorDraft(doctor.id, "specialty", event.target.value)}
+                            className="w-44 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-300"
+                          >
+                            {!adminSpecialtyOptions.includes(String(getAdminDoctorValue(doctor, "specialty"))) ? (
+                              <option value={String(getAdminDoctorValue(doctor, "specialty"))}>{String(getAdminDoctorValue(doctor, "specialty"))}</option>
+                            ) : null}
+                            {adminSpecialtyOptions.map((specialty) => <option key={specialty} value={specialty}>{specialty}</option>)}
+                          </select>
+                        </td>
+                        {(["district", "address", "phone", "email"] as const).map((field) => (
+                          <td key={field} className="border-b border-violet-100 px-2 py-2">
+                            <input
+                              value={String(getAdminDoctorValue(doctor, field))}
+                              onChange={(event) => updateAdminDoctorDraft(doctor.id, field, event.target.value)}
+                              className="w-36 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-300"
+                            />
+                          </td>
+                        ))}
+                        <td className="border-b border-violet-100 px-2 py-2">
+                          <div className="flex items-center gap-1">
+                            <input
+                              value={String(getAdminDoctorValue(doctor, "website"))}
+                              onChange={(event) => updateAdminDoctorDraft(doctor.id, "website", event.target.value)}
+                              className="w-36 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-300"
+                            />
+                            {String(getAdminDoctorValue(doctor, "website")).trim() ? (
+                              <a
+                                href={/^https?:\/\//i.test(String(getAdminDoctorValue(doctor, "website")).trim()) ? String(getAdminDoctorValue(doctor, "website")).trim() : `https://${String(getAdminDoctorValue(doctor, "website")).trim()}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="Website in neuem Tab öffnen"
+                                className="inline-flex shrink-0 rounded-md p-1.5 text-violet-700 hover:bg-violet-100 hover:text-violet-900"
+                              >
+                                <MousePointerClick className="h-4 w-4" />
+                              </a>
+                            ) : (
+                              <MousePointerClick className="h-4 w-4 shrink-0 text-slate-300" aria-hidden="true" />
+                            )}
+                          </div>
+                        </td>
+                        {(["bookingUrl", "about"] as const).map((field) => (
+                          <td key={field} className="border-b border-violet-100 px-2 py-2">
+                            <input
+                              value={String(getAdminDoctorValue(doctor, field))}
+                              onChange={(event) => updateAdminDoctorDraft(doctor.id, field, event.target.value)}
+                              className={`${field === "about" ? "w-64" : "w-56"} rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-300`}
+                            />
+                          </td>
+                        ))}
+                        <td className="border-b border-violet-100 px-2 py-2">
+                          <InlineMultiSelect
+                            value={Array.isArray(getAdminDoctorValue(doctor, "languages")) ? getAdminDoctorValue(doctor, "languages") as string[] : String(getAdminDoctorValue(doctor, "languages")).split(",").map((value) => value.trim()).filter(Boolean)}
+                            options={LANGUAGE_OPTIONS}
+                            onChange={(value) => updateAdminDoctorDraft(doctor.id, "languages", value)}
+                          />
+                        </td>
+                        <td className="border-b border-violet-100 px-2 py-2">
+                          <InlineMultiSelect
+                            value={Array.isArray(getAdminDoctorValue(doctor, "insuranceModels")) ? getAdminDoctorValue(doctor, "insuranceModels") as string[] : String(getAdminDoctorValue(doctor, "insuranceModels")).split(",").map((value) => value.trim()).filter(Boolean)}
+                            options={INSURANCE_OPTIONS}
+                            onChange={(value) => updateAdminDoctorDraft(doctor.id, "insuranceModels", value)}
+                          />
+                        </td>
+                        <td className="border-b border-violet-100 px-2 py-2">
+                          <select
+                            value={String(getAdminDoctorValue(doctor, "providerType"))}
+                            onChange={(event) => updateAdminDoctorDraft(doctor.id, "providerType", event.target.value)}
+                            className="w-28 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-300"
+                          >
+                            <option value="OEGK">OEGK</option>
+                            <option value="Wahlarzt">Wahlarzt</option>
+                            <option value="Privat">Privat</option>
+                          </select>
+                        </td>
+                        <td className="border-b border-violet-100 px-2 py-2">
+                          <select
+                            value={String(getAdminDoctorValue(doctor, "acceptsNewPatients"))}
+                            onChange={(event) => updateAdminDoctorDraft(doctor.id, "acceptsNewPatients", event.target.value)}
+                            className="w-28 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-300"
+                          >
+                            <option value="">Nicht angegeben</option>
+                            <option value="true">Ja</option>
+                            <option value="false">Nein</option>
+                          </select>
+                        </td>
+                        <td className="border-b border-violet-100 px-3 py-2 whitespace-nowrap">
+                          <span className="font-bold text-violet-800">{doctor.profileCompletion.percent}%</span>
+                          <span className="ml-2 text-slate-500">{doctor.isHidden ? "Ausgeblendet" : "Öffentlich"}</span>
+                        </td>
+                        <td className="border-b border-violet-100 px-2 py-2">
+                          <div className="flex min-w-32 flex-wrap gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => void saveAdminDoctorRow(doctor)}
+                              disabled={savingAdminDoctorId === doctor.id}
+                              title={savingAdminDoctorId === doctor.id ? "Speichert..." : "Speichern"}
+                              aria-label={savingAdminDoctorId === doctor.id ? "Speichert" : "Speichern"}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-emerald-600 text-white disabled:opacity-60"
+                            >
+                              <Save className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void applyAdminDoctorAction(doctor, doctor.isHidden ? "restore" : "hide")}
+                              disabled={actingDoctorId === doctor.id}
+                              title={doctor.isHidden ? "Anzeigen" : "Ausblenden"}
+                              aria-label={doctor.isHidden ? "Anzeigen" : "Ausblenden"}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 disabled:opacity-60"
+                            >
+                              {doctor.isHidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                            </button>
+                            {doctor.isCustomProfile ? (
+                              <button
+                                type="button"
+                                onClick={() => void applyAdminDoctorAction(doctor, "delete")}
+                                disabled={actingDoctorId === doctor.id}
+                                title="Löschen"
+                                aria-label="Löschen"
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-rose-600 text-white disabled:opacity-60"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+            {false && adminDoctorList.length > 0 ? (
               <div className="mt-4 divide-y divide-violet-100 overflow-hidden rounded-xl border border-violet-200 bg-white">
                 {adminDoctorList.map((doctor) => (
                   <article key={doctor.id} className="flex flex-wrap items-center justify-between gap-3 p-3 text-sm">
@@ -2802,7 +3114,7 @@ export function ArztDashboardLite({ doctors, role, authToken }: ArztDashboardLit
                               specialty: doctor.specialty,
                               district: doctor.district,
                               address: doctor.address,
-                              providerType: "OEGK",
+                              providerType: doctor.providerType,
                             },
                           ]);
                           setActiveTab("profil");
