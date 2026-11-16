@@ -29,6 +29,10 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [infoMessage, setInfoMessage] = useState("");
+  const [isDoctorRecovery, setIsDoctorRecovery] = useState(false);
+  const [isRecoverySessionReady, setIsRecoverySessionReady] = useState(false);
+  const [recoveryPassword, setRecoveryPassword] = useState("");
+  const [recoveryPasswordRepeat, setRecoveryPasswordRepeat] = useState("");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -39,7 +43,84 @@ export default function LoginPage() {
     if (verified === "0") {
       setErrorMessage("E-Mail-Bestätigung konnte nicht abgeschlossen werden. Bitte versuche den Link erneut.");
     }
+    if (params.get("recovery") === "doctor") {
+      setIsDoctorRecovery(true);
+    }
   }, []);
+
+  useEffect(() => {
+    if (!isDoctorRecovery || !supabaseClient) {
+      return;
+    }
+    const recoveryClient = supabaseClient;
+
+    async function checkRecoverySession() {
+      const { data } = await recoveryClient.auth.getSession();
+      setIsRecoverySessionReady(Boolean(data.session));
+    }
+
+    void checkRecoverySession();
+    const { data: listener } = recoveryClient.auth.onAuthStateChange((event, nextSession) => {
+      if (event === "PASSWORD_RECOVERY" || nextSession) {
+        setIsRecoverySessionReady(Boolean(nextSession));
+      }
+    });
+    return () => listener.subscription.unsubscribe();
+  }, [isDoctorRecovery, supabaseClient]);
+
+  async function completeDoctorPasswordRecovery() {
+    if (!supabaseClient) {
+      setErrorMessage("Supabase ist nicht konfiguriert.");
+      return;
+    }
+    if (recoveryPassword.length < 8) {
+      setErrorMessage("Das neue Passwort muss mindestens 8 Zeichen haben.");
+      return;
+    }
+    if (recoveryPassword !== recoveryPasswordRepeat) {
+      setErrorMessage("Die Passwörter stimmen nicht überein.");
+      return;
+    }
+
+    setIsLoading(true);
+    setErrorMessage("");
+    try {
+      const { error } = await supabaseClient.auth.updateUser({ password: recoveryPassword });
+      if (error) {
+        throw new Error(error.message);
+      }
+      await supabaseClient.auth.signOut();
+      localStorage.removeItem(ARZTBEREICH_STORAGE_KEY);
+      window.location.assign("/arztbereich");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Passwort konnte nicht zurückgesetzt werden.");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  if (isDoctorRecovery) {
+    return (
+      <main className="mx-auto w-full max-w-md px-4 py-12 sm:px-6 lg:px-8">
+        <section className="rounded-2xl border border-sky-200 bg-white p-6 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">Arztbereich</p>
+          <h1 className="mt-2 text-2xl font-extrabold text-slate-900">Neues Passwort festlegen</h1>
+          {!isRecoverySessionReady ? (
+            <p className="mt-3 text-sm text-slate-600">Der Link wird geprüft. Falls diese Meldung bleibt, fordere bitte einen neuen Reset-Link an.</p>
+          ) : (
+            <div className="mt-5 grid gap-3">
+              <input type="password" value={recoveryPassword} onChange={(event) => setRecoveryPassword(event.target.value)} placeholder="Neues Passwort (mindestens 8 Zeichen)" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              <input type="password" value={recoveryPasswordRepeat} onChange={(event) => setRecoveryPasswordRepeat(event.target.value)} placeholder="Neues Passwort wiederholen" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              <button type="button" onClick={() => void completeDoctorPasswordRecovery()} disabled={isLoading || !recoveryPassword || !recoveryPasswordRepeat} className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">
+                {isLoading ? "Speichert..." : "Passwort speichern"}
+              </button>
+            </div>
+          )}
+          {errorMessage ? <p className="mt-3 text-sm font-semibold text-rose-700">{errorMessage}</p> : null}
+        </section>
+      </main>
+    );
+  }
 
   async function submitEmailAuth() {
     if (!supabaseClient) {

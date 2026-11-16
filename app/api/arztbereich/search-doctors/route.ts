@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import doctorsJson from "@/data/doctors.json";
 import { getCustomProfiles } from "@/lib/arztbereichAdminStore";
-import { normalizeDoctorsData } from "@/lib/doctors";
+import { mergeDoctorProfiles, normalizeDoctorsData } from "@/lib/doctors";
 import { verifyArztbereichSessionToken } from "@/lib/arztbereichSession";
 
 type SearchBody = {
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ ok: false, error: "Nicht autorisiert." }, { status: 401 });
       }
 
-      const allDoctors = [...baseDoctors, ...(await getCustomProfiles())];
+      const allDoctors = mergeDoctorProfiles(baseDoctors, await getCustomProfiles());
       const primaryDoctorId = session.doctorIds[0] ?? "";
       scopedDoctors = session.role === "admin" ? allDoctors : allDoctors.filter((doctor) => doctor.id === primaryDoctorId);
     }
@@ -63,6 +63,7 @@ export async function POST(request: Request) {
         phone: doctor.phone,
         email: doctor.email,
         website: doctor.website,
+        bookingUrl: doctor.bookingUrl,
       }));
 
     return NextResponse.json({ ok: true, doctors: results });

@@ -31,6 +31,7 @@ type DoctorViewCountersState = {
 const SUPABASE_TABLE = "doctor_view_counters";
 const STORE_KEY = "terminboerse:doctor-community:views:v1";
 const DEFAULT_VIEW_STATE: DoctorViewCountersState = { entries: [] };
+const LIVE_RANKING_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 let inMemoryViewState: DoctorViewCountersState = { ...DEFAULT_VIEW_STATE };
 
@@ -134,6 +135,11 @@ function normalizeCount(value: unknown) {
   return Math.floor(value);
 }
 
+function hasRecentProfileView(updatedAt: string) {
+  const timestamp = new Date(updatedAt).getTime();
+  return Number.isFinite(timestamp) && timestamp >= Date.now() - LIVE_RANKING_WINDOW_MS;
+}
+
 function getEntryByDoctorId(state: DoctorViewCountersState, doctorId: string): DoctorViewCountersEntry | null {
   const normalizedDoctorId = doctorId.trim();
   if (!normalizedDoctorId) {
@@ -181,13 +187,14 @@ async function bumpSupabaseCounters(doctorId: string, profileViewsDelta: number,
     listImpressions: 0,
     updatedAt: new Date(0).toISOString(),
   };
+  const isNewProfileViewWindow = profileViewsDelta > 0 && !hasRecentProfileView(current.updatedAt);
 
   const { error } = await client.from(SUPABASE_TABLE).upsert(
     {
       doctor_id: doctorId,
-      profile_views: current.profileViews + profileViewsDelta,
+      profile_views: isNewProfileViewWindow ? profileViewsDelta : current.profileViews + profileViewsDelta,
       list_impressions: current.listImpressions + listImpressionsDelta,
-      updated_at: new Date().toISOString(),
+      updated_at: profileViewsDelta > 0 ? new Date().toISOString() : current.updatedAt,
     },
     { onConflict: "doctor_id" },
   );
@@ -252,9 +259,11 @@ async function bumpViewCounters(doctorId: string, patch: { profileViewsDelta?: n
 
   const nextEntry: DoctorViewCountersEntry = {
     doctorId: normalizedDoctorId,
-    profileViews: current.profileViews + profileViewsDelta,
+    profileViews: profileViewsDelta > 0 && !hasRecentProfileView(current.updatedAt)
+      ? profileViewsDelta
+      : current.profileViews + profileViewsDelta,
     listImpressions: current.listImpressions + listImpressionsDelta,
-    updatedAt: new Date().toISOString(),
+    updatedAt: profileViewsDelta > 0 ? new Date().toISOString() : current.updatedAt,
   };
 
   if (index >= 0) {
@@ -268,10 +277,6 @@ async function bumpViewCounters(doctorId: string, patch: { profileViewsDelta?: n
 
 function getSeededComments(): DoctorComment[] {
   return [];
-}
-
-export async function trackDoctorProfileView(doctorId: string) {
-  await bumpViewCounters(doctorId, { profileViewsDelta: 1 });
 }
 
 export async function trackDoctorListImpressions(doctorIds: string[]) {
@@ -314,16 +319,47 @@ export async function getDoctorCommunitySnapshot(doctorId: string): Promise<Doct
 }
 
 export async function getDoctorCommunityPreviews(doctorIds: string[]) {
-  return Promise.all(doctorIds.map(async (doctorId) => {
-    const snapshot = await getDoctorCommunitySnapshot(doctorId);
+  const counters = new Map<string, DoctorViewCountersEntry>();
+  const ids = [...new Set(doctorIds.map((id) => id.trim()).filter(Boolean))];
+  if (hasSupabaseConfig() && ids.length > 0) {
+    const client = createSupabaseAdminClient();
+    const { data, error } = await client
+      .from(SUPABASE_TABLE)
+      .select("doctor_id, profile_views, list_impressions, updated_at")
+      .in("doctor_id", ids);
+    if (error) {
+      console.error("Doctor community preview counters could not be loaded:", error.message);
+    } else {
+      for (const row of data ?? []) {
+        counters.set(row.doctor_id, {
+          doctorId: row.doctor_id,
+          profileViews: normalizeCount(row.profile_views),
+          listImpressions: normalizeCount(row.list_impressions),
+          updatedAt: row.updated_at ?? new Date(0).toISOString(),
+        });
+      }
+    }
+  }
+  if (ids.some((id) => !counters.has(id))) {
+    const state = await loadViewState();
+    for (const id of ids) {
+      if (!counters.has(id)) {
+        const entry = getEntryByDoctorId(state, id);
+        if (entry) counters.set(id, entry);
+      }
+    }
+  }
+  return doctorIds.map((doctorId) => {
+    const base = getSeededBaseMetrics(doctorId);
+    const entry = counters.get(doctorId.trim());
     return {
       doctorId,
-      averageRating: snapshot.averageRating,
-      ratingsCount: snapshot.ratingsCount,
-      commentsCount: snapshot.commentsCount,
-      viewsCount: snapshot.viewsCount,
+      averageRating: base.averageRating,
+      ratingsCount: base.ratingsCount,
+      commentsCount: base.commentsCount,
+      viewsCount: entry ? entry.profileViews + entry.listImpressions : 0,
     };
-  }));
+  });
 }
 
 export async function getTopViewedDoctorIds(limit: number) {

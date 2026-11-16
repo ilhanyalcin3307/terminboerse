@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { reviewPendingRegistration } from "@/lib/arztbereichAdminStore";
 import { verifyArztbereichSessionToken } from "@/lib/arztbereichSession";
+import { revalidatePublicDoctorProfiles } from "@/lib/publicDoctorProfiles";
 
 type ReviewBody = {
   token?: string;
@@ -33,6 +34,7 @@ export async function POST(request: Request) {
       reviewNote,
     });
 
+    revalidatePublicDoctorProfiles();
     return NextResponse.json({ ok: true, request: requestItem });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Interner Fehler bei der Freigabe.";

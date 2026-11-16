@@ -1,6 +1,9 @@
 import { LandingPage } from "@/components/landing/LandingPage";
-import doctorsJson from "@/data/doctors.json";
-import { getLandingDoctorData, normalizeDoctorsData } from "@/lib/doctors";
+import { getDirectoryDoctors } from "@/lib/doctorDirectory";
+import { getLandingDoctorData } from "@/lib/doctors";
+import { getUpcomingDoctorSlots } from "@/lib/upcomingDoctorSlots";
+
+export const revalidate = 30;
 
 const faqSchema = {
   "@context": "https://schema.org",
@@ -81,9 +84,11 @@ const webpageSchema = {
   },
 };
 
-export default function HomePage() {
-  const doctors = normalizeDoctorsData(doctorsJson);
+export default async function HomePage() {
+  const doctors = await getDirectoryDoctors();
   const landingData = getLandingDoctorData(doctors);
+  const upcomingDoctorSlots = await getUpcomingDoctorSlots(doctors);
+  const onlineBookingDoctors = doctors.filter((doctor) => Boolean(doctor.bookingUrl)).slice(0, 5);
   return (
     <>
       <script
@@ -109,6 +114,8 @@ export default function HomePage() {
         totalDoctors={landingData.totalDoctors}
         byCategory={landingData.byCategory}
         byDistrictCategory={landingData.byDistrictCategory}
+        initialUpcomingDoctorSlots={upcomingDoctorSlots}
+        initialOnlineBookingDoctors={onlineBookingDoctors}
       />
     </>
   );

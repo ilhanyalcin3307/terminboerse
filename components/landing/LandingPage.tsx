@@ -13,7 +13,7 @@ import {
   MapPin,
   Search,
   ShieldCheck,
-  TrendingUp,
+  CalendarCheck,
   X,
 } from "lucide-react";
 import { DevAnalyticsPanel } from "@/components/analytics/DevAnalyticsPanel";
@@ -29,6 +29,8 @@ type LandingPageProps = {
   totalDoctors?: number;
   byCategory?: Record<string, number>;
   byDistrictCategory?: Record<string, number>;
+  initialUpcomingDoctorSlots?: UpcomingDoctorSlotsItem[];
+  initialOnlineBookingDoctors?: DoctorRecord[];
 };
 
 type LeadEntry = {
@@ -43,7 +45,13 @@ type LeadEntry = {
 
 type SeoQuickLink = {
   label: string;
-  search: string;
+  href: string;
+};
+
+type GuideLink = {
+  label: string;
+  description: string;
+  href: string;
 };
 
 type FaqItem = {
@@ -61,24 +69,6 @@ type UpcomingDoctorSlotsItem = {
   specialty: string;
   district: string;
   slots: Array<{ id?: string; start: string; end: string }>;
-};
-
-type UpcomingDoctorSlotsPayload = {
-  ok?: boolean;
-  items?: UpcomingDoctorSlotsItem[];
-};
-
-type TopViewedDoctorItem = {
-  doctorId: string;
-  doctorName: string;
-  specialty: string;
-  district: string;
-  profileViews: number;
-};
-
-type TopViewedDoctorsPayload = {
-  ok?: boolean;
-  items?: TopViewedDoctorItem[];
 };
 
 type ApothekeFeatureCollection = {
@@ -133,14 +123,18 @@ const fallbackCategories = [
 const ALL_SPECIALTIES = "Alle Fachbereiche";
 
 const seoQuickLinks: SeoQuickLink[] = [
-  { label: "Hausarzt 1100 Wien", search: "Hausarzt 1100 Wien" },
-  { label: "Zahnarzt 1030 Wien", search: "Zahnarzt 1030 Wien" },
-  { label: "Orthopädie Wien", search: "Orthopädie Wien" },
-  { label: "Augenarzt 1070 Wien", search: "Augenarzt 1070 Wien" },
-  { label: "Dermatologie 1060 Wien", search: "Dermatologie 1060 Wien" },
-  { label: "Kinderarzt 1220 Wien", search: "Kinderarzt 1220 Wien" },
-  { label: "HNO 1180 Wien", search: "HNO 1180 Wien" },
-  { label: "Gynäkologie 1090 Wien", search: "Gynäkologie 1090 Wien" },
+  { label: "Hausarzt in Wien", href: "/arzttermin-wien/hausarzt" },
+  { label: "Hautarzt in Wien", href: "/arzttermin-wien/hautarzt" },
+  { label: "Frauenarzt in Wien", href: "/arzttermin-wien/frauenarzt" },
+  { label: "Zahnarzt in Wien", href: "/arzttermin-wien/zahnarzt" },
+  { label: "Kinderarzt in Wien", href: "/arzttermin-wien/kinderarzt" },
+  { label: "Arztliste Wien", href: "/arzt" },
+];
+
+const guideLinks: GuideLink[] = [
+  { label: "Arzttermin in Wien finden", description: "Fachbereich, Bezirk und Kontaktwege gezielt nutzen.", href: "/ratgeber/arzttermin-wien" },
+  { label: "Kurzfristig einen Termin finden", description: "Praktische Schritte für eine zeitnahe Anfrage.", href: "/ratgeber/arzttermin-kurzfristig" },
+  { label: "Facharzttermin in Wien", description: "Suche und organisatorische Vorbereitung.", href: "/ratgeber/facharzttermin-wien" },
 ];
 
 const faqItems: FaqItem[] = [
@@ -245,6 +239,8 @@ export function LandingPage({
   totalDoctors = 0,
   byCategory = {},
   byDistrictCategory = {},
+  initialUpcomingDoctorSlots = [],
+  initialOnlineBookingDoctors = [],
 }: LandingPageProps) {
   const router = useRouter();
   const [leadModalOpen, setLeadModalOpen] = useState(false);
@@ -295,8 +291,7 @@ export function LandingPage({
   const [isDoctorSuggestionsOpen, setIsDoctorSuggestionsOpen] = useState(false);
   const doctorSearchBoxRef = useRef<HTMLDivElement | null>(null);
   const [source, setSource] = useState("hero");
-  const [upcomingDoctorSlots, setUpcomingDoctorSlots] = useState<UpcomingDoctorSlotsItem[]>([]);
-  const [topViewedDoctors, setTopViewedDoctors] = useState<TopViewedDoctorItem[]>([]);
+  const upcomingDoctorSlots = initialUpcomingDoctorSlots;
 
   const [nameInput, setNameInput] = useState("");
   const [contactInput, setContactInput] = useState("");
@@ -438,78 +433,6 @@ export function LandingPage({
       window.clearTimeout(timeoutId);
     };
   }, [doctorNameQuery]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-
-    async function loadUpcomingSlots() {
-      try {
-        const response = await fetch("/api/doctors/upcoming-slots", {
-          method: "GET",
-          cache: "no-store",
-          signal: controller.signal,
-        });
-
-        if (!response.ok) {
-          return;
-        }
-
-        const payload = (await response.json()) as UpcomingDoctorSlotsPayload;
-        if (!payload.ok || !Array.isArray(payload.items)) {
-          return;
-        }
-
-        setUpcomingDoctorSlots(payload.items);
-      } catch (error) {
-        if (error instanceof Error && error.name === "AbortError") {
-          return;
-        }
-        setUpcomingDoctorSlots([]);
-      }
-    }
-
-    void loadUpcomingSlots();
-
-    return () => {
-      controller.abort();
-    };
-  }, []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-
-    async function loadTopViewedDoctors() {
-      try {
-        const response = await fetch("/api/doctors/top-viewed", {
-          method: "GET",
-          cache: "no-store",
-          signal: controller.signal,
-        });
-
-        if (!response.ok) {
-          return;
-        }
-
-        const payload = (await response.json()) as TopViewedDoctorsPayload;
-        if (!payload.ok || !Array.isArray(payload.items)) {
-          return;
-        }
-
-        setTopViewedDoctors(payload.items);
-      } catch (error) {
-        if (error instanceof Error && error.name === "AbortError") {
-          return;
-        }
-        setTopViewedDoctors([]);
-      }
-    }
-
-    void loadTopViewedDoctors();
-
-    return () => {
-      controller.abort();
-    };
-  }, []);
 
   useEffect(() => {
     function closeWhenClickedOutside(event: MouseEvent) {
@@ -768,32 +691,6 @@ export function LandingPage({
           </p>
         </section>
 
-        {topViewedDoctors.length > 0 ? (
-          <section className="rounded-2xl border border-sky-200 bg-gradient-to-r from-sky-50 via-white to-sky-50 p-4 shadow-sm">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="flex items-center gap-1.5 text-sm font-semibold text-sky-700">
-                <TrendingUp className="h-4 w-4" />
-                Meistgesuchte Ärzte
-              </p>
-              <p className="text-xs text-slate-500">Live-Ranking</p>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-5">
-              {topViewedDoctors.map((item, index) => (
-                <Link
-                  key={item.doctorId}
-                  href={`/arzt/${encodeURIComponent(getDoctorSeoSlug({ id: item.doctorId, name: item.doctorName, specialty: item.specialty, district: item.district }))}`}
-                  className="rounded-xl border border-sky-200 bg-white p-3 transition hover:border-sky-400 hover:shadow-sm"
-                >
-                  <p className="text-xs font-semibold text-sky-600">#{index + 1}</p>
-                  <p className="mt-1 text-sm font-semibold text-slate-800">{item.doctorName}</p>
-                  <p className="mt-1 text-xs text-slate-500">{item.specialty} · {item.district}</p>
-                </Link>
-              ))}
-            </div>
-          </section>
-        ) : null}
-
         <section className="rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 via-white to-emerald-50 p-4 shadow-sm">
           <div className="mb-2 flex items-center justify-between">
             <p className="text-sm font-semibold text-emerald-700">Freie Termine in den nächsten 3 Tagen</p>
@@ -816,6 +713,7 @@ export function LandingPage({
                   </div>
                   <Link
                     href={`/arzt/${encodeURIComponent(getDoctorSeoSlug({ id: item.doctorId, name: item.doctorName, specialty: item.specialty, district: item.district }))}`}
+                    prefetch={false}
                     className="mt-3 inline-flex rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500"
                   >
                     Profil öffnen
@@ -827,6 +725,50 @@ export function LandingPage({
             <p className="mt-2 text-sm text-slate-600">Aktuell wurden noch keine freien 3-Tage-Slots veröffentlicht.</p>
           )}
         </section>
+
+        {initialOnlineBookingDoctors.length > 0 ? (
+          <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <p className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-950">
+                <CalendarCheck className="h-4 w-4 text-emerald-700" />
+                Online-Termin direkt buchen
+              </p>
+              <p className="text-xs text-emerald-800">Direkt bei der Ordination</p>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+              {initialOnlineBookingDoctors.map((doctor) => (
+                <article key={doctor.id} className="flex h-full flex-col rounded-xl border border-emerald-200 bg-white p-3">
+                  <div className="min-h-[132px]">
+                    <p className="text-sm font-semibold text-slate-900">{doctor.name}</p>
+                    <p className="mt-2 text-xs leading-5 text-slate-600">{doctor.specialty}</p>
+                    <p className="mt-3 inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-800">
+                      <MapPin className="h-3.5 w-3.5" />
+                      {doctor.district}
+                    </p>
+                  </div>
+                  <div className="mt-3 grid gap-2">
+                    <a
+                      href={doctor.bookingUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-2 py-1.5 text-xs font-bold text-white transition hover:bg-emerald-500"
+                    >
+                      <CalendarCheck className="h-3.5 w-3.5" />
+                      Online-Termin
+                    </a>
+                    <Link
+                      href={`/arzt/${encodeURIComponent(getDoctorSeoSlug(doctor))}`}
+                      prefetch={false}
+                      className="text-center text-xs font-semibold text-emerald-800 hover:underline"
+                    >
+                      Profil ansehen
+                    </Link>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <section className="rounded-3xl border border-slate-200 bg-white p-6 md:p-8">
           <div className="mb-6 flex items-center gap-2">
@@ -869,18 +811,31 @@ export function LandingPage({
           <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {seoQuickLinks.map((item) => (
               <Link
-                key={item.search}
-                href={`/arzt?search=${encodeURIComponent(item.search)}`}
+                key={item.href}
+                href={item.href}
                 className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-800 transition hover:-translate-y-0.5 hover:border-sky-300 hover:bg-white"
                 onClick={() => {
                   trackEvent("cta_clicked", {
                     source: "seo-quick-links",
                     action: "quick_search",
-                    search_term: item.search,
+                    search_term: item.label,
                   });
                 }}
               >
                 {item.label}
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        <section className="border-y border-slate-200 py-8 md:py-10">
+          <h2 className="text-2xl font-bold text-slate-900">Ratgeber: Arzttermine in Wien</h2>
+          <p className="mt-2 max-w-3xl text-sm text-slate-600">Praktische Informationen zur Suche und Terminorganisation in Wien.</p>
+          <div className="mt-5 grid gap-3 md:grid-cols-3">
+            {guideLinks.map((guide) => (
+              <Link key={guide.href} href={guide.href} className="border border-slate-200 bg-white p-4 transition hover:border-sky-300 hover:bg-sky-50">
+                <p className="font-semibold text-slate-900">{guide.label}</p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{guide.description}</p>
               </Link>
             ))}
           </div>

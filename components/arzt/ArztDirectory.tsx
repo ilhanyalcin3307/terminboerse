@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  CalendarCheck,
   Globe,
   MapPin,
   Eye,
@@ -15,7 +16,7 @@ import {
 } from "lucide-react";
 import { DevAnalyticsPanel } from "@/components/analytics/DevAnalyticsPanel";
 import { trackEvent } from "@/lib/analytics";
-import { getDoctorSeoSlug, getGoogleMapsUrl, normalizeDoctorSearchText, type DoctorRecord } from "@/lib/doctors";
+import { getDoctorSeoSlug, getGoogleMapsUrl, getProviderTypeLabel, normalizeDoctorSearchText, type DoctorRecord } from "@/lib/doctors";
 
 const ALL_SPECIALTIES = "Alle Fachbereiche";
 const ALL_DISTRICTS = "Alle Bezirke";
@@ -23,6 +24,12 @@ const PAGE_SIZE = 24;
 
 type ArztDirectoryProps = {
   initialDoctors?: DoctorRecord[];
+  initialPage?: number;
+  initialTotalMatches?: number;
+  initialTotalPages?: number;
+  paginationPath?: string;
+  defaultSpecialty?: string;
+  initialSearchParsed?: boolean;
   initialSearchQuery?: string;
   initialSelectedSpecialty?: string;
   initialSelectedDistrict?: string;
@@ -128,6 +135,12 @@ function parseSmartInitialFilters(query: string, districts: string[], specialtie
 
 export function ArztDirectory({
   initialDoctors = [],
+  initialPage = 1,
+  initialTotalMatches = 0,
+  initialTotalPages = 1,
+  paginationPath = "/arzt",
+  defaultSpecialty = ALL_SPECIALTIES,
+  initialSearchParsed = false,
   initialSearchQuery = "",
   initialSelectedSpecialty = ALL_SPECIALTIES,
   initialSelectedDistrict = ALL_DISTRICTS,
@@ -135,15 +148,15 @@ export function ArztDirectory({
   const router = useRouter();
 
   const [doctors, setDoctors] = useState<DoctorRecord[]>(initialDoctors);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(initialDoctors.length === 0);
   const [errorMessage, setErrorMessage] = useState("");
 
   const [specialties, setSpecialties] = useState<string[]>([ALL_SPECIALTIES]);
   const [districts, setDistricts] = useState<string[]>([ALL_DISTRICTS]);
 
-  const [totalMatches, setTotalMatches] = useState(0);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
+  const [totalMatches, setTotalMatches] = useState(initialTotalMatches);
+  const [page, setPage] = useState(initialPage);
+  const [totalPages, setTotalPages] = useState(initialTotalPages);
 
   const [totalDoctors, setTotalDoctors] = useState(0);
   const [doctorsWithPhone, setDoctorsWithPhone] = useState(0);
@@ -152,7 +165,7 @@ export function ArztDirectory({
   const [selectedSpecialty, setSelectedSpecialty] = useState(initialSelectedSpecialty);
   const [selectedDistrict, setSelectedDistrict] = useState(initialSelectedDistrict);
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
-  const [smartParsingApplied, setSmartParsingApplied] = useState(initialSearchQuery.trim() === "");
+  const [smartParsingApplied, setSmartParsingApplied] = useState(initialSearchQuery.trim() === "" || initialSearchParsed);
   const lastImpressionKeyRef = useRef("");
 
   useEffect(() => {
@@ -173,7 +186,6 @@ export function ArztDirectory({
           });
 
           const response = await fetch(`/api/doctors?${params.toString()}`, {
-            cache: "no-store",
             signal: controller.signal,
           });
 
@@ -277,7 +289,21 @@ export function ArztDirectory({
 
   const featuredSpecialties = useMemo(() => specialties.slice(1, 7), [specialties]);
 
-  function trackDoctorAction(doctor: DoctorRecord, action: "phone" | "website" | "route") {
+  function getPageHref(nextPage: number) {
+    const params = new URLSearchParams({ page: String(nextPage) });
+    if (searchQuery) {
+      params.set("search", searchQuery);
+    }
+    if (selectedDistrict !== ALL_DISTRICTS) {
+      params.set("district", selectedDistrict);
+    }
+    if (selectedSpecialty !== defaultSpecialty) {
+      params.set("category", selectedSpecialty);
+    }
+    return `${paginationPath}?${params.toString()}`;
+  }
+
+  function trackDoctorAction(doctor: DoctorRecord, action: "phone" | "website" | "route" | "booking_url") {
     trackEvent("doctor_action_clicked", {
       source: "arzt-directory",
       action,
@@ -444,7 +470,7 @@ export function ArztDirectory({
                   <p className="text-sm text-slate-600">{doctor.specialty}</p>
                 </div>
                 <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                  {doctor.providerType}
+                  {getProviderTypeLabel(doctor.providerType)}
                 </span>
               </div>
 
@@ -454,6 +480,12 @@ export function ArztDirectory({
                     <Eye className="h-3.5 w-3.5" />
                     {formatCompactCount(doctor.viewsCount)} Aufrufe
                   </span>
+                  {doctor.bookingUrl ? (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-900">
+                      <CalendarCheck className="h-3.5 w-3.5 text-emerald-700" />
+                      Online-Termin möglich
+                    </span>
+                  ) : null}
                 </div>
                 <p className="inline-flex items-start gap-2">
                   <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
@@ -472,6 +504,21 @@ export function ArztDirectory({
               </div>
 
               <div className="mt-5 grid gap-2 sm:grid-cols-3">
+                {doctor.bookingUrl ? (
+                  <a
+                    href={doctor.bookingUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      trackDoctorAction(doctor, "booking_url");
+                    }}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-bold text-white transition hover:bg-emerald-500"
+                  >
+                    <CalendarCheck className="h-4 w-4" />
+                    Online-Termin
+                  </a>
+                ) : null}
                 {doctor.phone ? (
                   <a
                     href={`tel:${doctor.phone.replace(/[^+\d]/g, "")}`}
@@ -518,6 +565,7 @@ export function ArztDirectory({
               <div className="mt-4 grid gap-2 sm:grid-cols-2">
                 <Link
                   href={`/arzt/${encodeURIComponent(getDoctorSeoSlug(doctor))}`}
+                  prefetch={false}
                   onClick={(event) => {
                     event.stopPropagation();
                     trackEvent("cta_clicked", {
@@ -534,6 +582,7 @@ export function ArztDirectory({
                 </Link>
                 <Link
                   href={`/arzt/${encodeURIComponent(getDoctorSeoSlug(doctor))}`}
+                  prefetch={false}
                   onClick={(event) => {
                     event.stopPropagation();
                     trackEvent("cta_clicked", {
@@ -561,23 +610,33 @@ export function ArztDirectory({
 
         {!isLoading && totalPages > 1 ? (
           <section className="mt-6 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
-            <button
-              disabled={page <= 1}
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-              className="rounded-lg border border-slate-300 px-3 py-1.5 font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Zurück
-            </button>
+            {page > 1 ? (
+              <a
+                href={getPageHref(page - 1)}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 font-semibold text-slate-700"
+              >
+                Zurück
+              </a>
+            ) : (
+              <button disabled className="cursor-not-allowed rounded-lg border border-slate-300 px-3 py-1.5 font-semibold text-slate-700 opacity-50">
+                Zurück
+              </button>
+            )}
             <p>
               Seite <span className="font-semibold text-slate-800">{page}</span> von <span className="font-semibold text-slate-800">{totalPages}</span>
             </p>
-            <button
-              disabled={page >= totalPages}
-              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-              className="rounded-lg border border-slate-300 px-3 py-1.5 font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Weiter
-            </button>
+            {page < totalPages ? (
+              <a
+                href={getPageHref(page + 1)}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 font-semibold text-slate-700"
+              >
+                Weiter
+              </a>
+            ) : (
+              <button disabled className="cursor-not-allowed rounded-lg border border-slate-300 px-3 py-1.5 font-semibold text-slate-700 opacity-50">
+                Weiter
+              </button>
+            )}
           </section>
         ) : null}
       </main>

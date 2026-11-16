@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import doctorsJson from "@/data/doctors.json";
 import { getCustomProfiles } from "@/lib/arztbereichAdminStore";
-import { normalizeDoctorsData } from "@/lib/doctors";
+import { mergeDoctorProfiles, normalizeDoctorsData } from "@/lib/doctors";
 import { verifyArztbereichSessionToken } from "@/lib/arztbereichSession";
 
 type MyDoctorsBody = {
@@ -22,7 +22,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: "Ungültige oder abgelaufene Sitzung." }, { status: 401 });
     }
 
-    const allDoctors = [...normalizeDoctorsData(doctorsJson), ...(await getCustomProfiles())];
+    const allDoctors = mergeDoctorProfiles(normalizeDoctorsData(doctorsJson), await getCustomProfiles());
     const primaryDoctorId = session.doctorIds[0] ?? "";
     const doctors = (session.role === "admin" ? [] : allDoctors.filter((doctor) => doctor.id === primaryDoctorId)).map((doctor) => ({
         id: doctor.id,
@@ -34,6 +34,7 @@ export async function POST(request: Request) {
         phone: doctor.phone,
         email: doctor.email,
         website: doctor.website,
+        bookingUrl: doctor.bookingUrl,
       }));
 
     return NextResponse.json({

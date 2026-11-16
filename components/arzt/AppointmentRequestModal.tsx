@@ -71,6 +71,14 @@ export function AppointmentRequestModal({
       district: doctor.district,
       modal: "appointment_request",
     });
+    window.dataLayer = window.dataLayer || [];
+    window.dataLayer.push({
+      event: "termin_anfrage_click",
+      doctor_id: doctor.id,
+      doctor_name: doctor.name,
+      fachbereich: doctor.specialty,
+      source,
+    });
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {

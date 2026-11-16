@@ -3,6 +3,7 @@ import doctorsJson from "@/data/doctors.json";
 import { getCustomProfiles, reassignApprovedRegistration } from "@/lib/arztbereichAdminStore";
 import { normalizeDoctorsData } from "@/lib/doctors";
 import { verifyArztbereichSessionToken } from "@/lib/arztbereichSession";
+import { revalidatePublicDoctorProfiles } from "@/lib/publicDoctorProfiles";
 
 type ReassignBody = {
   token?: string;
@@ -42,6 +43,7 @@ export async function POST(request: Request) {
       reviewNote,
     });
 
+    revalidatePublicDoctorProfiles();
     return NextResponse.json({ ok: true, request: requestItem });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Interner Fehler bei der Zuordnung.";

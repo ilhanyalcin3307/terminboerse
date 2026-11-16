@@ -8,6 +8,7 @@ export type DoctorRecord = {
   phone?: string;
   email?: string;
   website?: string;
+  bookingUrl?: string;
   latitude?: number;
   longitude?: number;
   nextSlot?: string;
@@ -15,11 +16,24 @@ export type DoctorRecord = {
   ratingsCount?: number;
   commentsCount?: number;
   viewsCount?: number;
+  workingHours?: WorkingHoursEntry[];
+  about?: string;
+  services?: DoctorService[];
+  languages?: string[];
+  insuranceModels?: string[];
+  acceptsNewPatients?: boolean;
 };
 
 export type WorkingHoursEntry = {
   label: string;
   value: string;
+};
+
+export type DoctorService = {
+  title: string;
+  description?: string;
+  durationMinutes?: string;
+  priceInfo?: string;
 };
 
 export type DoctorTickerItem = {
@@ -63,6 +77,16 @@ export function normalizeDoctorSearchText(value: string) {
     .replace(/ae/g, "a")
     .replace(/oe/g, "o")
     .replace(/ue/g, "u");
+}
+
+export function getProviderTypeLabel(providerType: DoctorRecord["providerType"]) {
+  if (providerType === "OEGK") {
+    return "Kassenarzt";
+  }
+  if (providerType === "Wahlarzt") {
+    return "Wahlarzt";
+  }
+  return "Privatarzt";
 }
 
 export function tokenizeDoctorSearch(value: string) {
@@ -212,6 +236,25 @@ export function getGoogleMapsEmbedUrl(doctor: Pick<DoctorRecord, "address" | "la
   return `https://www.google.com/maps?q=${encodeURIComponent(doctor.address)}&z=15&output=embed`;
 }
 
+export function getGoogleMapsDirectionsUrl(
+  doctor: Pick<DoctorRecord, "address" | "latitude" | "longitude">,
+  travelMode: "driving" | "transit" | "walking",
+) {
+  const destination =
+    typeof doctor.latitude === "number" && typeof doctor.longitude === "number"
+      ? `${doctor.latitude},${doctor.longitude}`
+      : doctor.address;
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&travelmode=${travelMode}`;
+}
+
+export function getGoogleMapsNearbySearchUrl(doctor: Pick<DoctorRecord, "address" | "latitude" | "longitude">, query: string) {
+  const location =
+    typeof doctor.latitude === "number" && typeof doctor.longitude === "number"
+      ? `${doctor.latitude},${doctor.longitude}`
+      : doctor.address;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${query} near ${location}`)}`;
+}
+
 export function normalizeDoctorsData(rawData: unknown): DoctorRecord[] {
   const collection = rawData as GeoJsonFeatureCollection;
 
@@ -260,6 +303,9 @@ export function normalizeDoctorsData(rawData: unknown): DoctorRecord[] {
     const phone = normalizePhone(pickText(raw, ["TELEFON", "phone", "telefon"]));
     const email = pickText(raw, ["EMAIL", "E_MAIL", "MAIL", "email"]);
     const website = normalizeWebsite(pickText(raw, ["INTERNET", "website", "web", "url"]));
+    const bookingUrl = normalizeWebsite(
+      pickText(raw, ["bookingUrl", "booking_url", "onlineBookingUrl", "online_booking_url", "TERMIN_LINK", "TERMINLINK"]),
+    );
     const { latitude, longitude } = getCoordinates(raw);
 
     if (!name || !specialty) {
@@ -273,16 +319,68 @@ export function normalizeDoctorsData(rawData: unknown): DoctorRecord[] {
       district,
       address: address || "Adresse folgt",
       providerType,
+      languages: ["Deutsch"],
       ...(phone ? { phone } : {}),
       ...(email ? { email } : {}),
       ...(website ? { website } : {}),
+      ...(bookingUrl ? { bookingUrl } : {}),
       ...(typeof latitude === "number" ? { latitude } : {}),
       ...(typeof longitude === "number" ? { longitude } : {}),
       ...(nextSlot ? { nextSlot } : {}),
     };
   });
 
-  return normalized.filter((entry): entry is DoctorRecord => entry !== null);
+  const validDoctors = normalized.filter((entry): entry is DoctorRecord => entry !== null);
+
+  const deduplicatedMap = new Map<string, DoctorRecord>();
+  for (const doc of validDoctors) {
+    const key = `${normalizeDoctorSearchText(doc.name)}::${normalizeDoctorSearchText(doc.address)}`;
+    const existing = deduplicatedMap.get(key);
+    if (!existing) {
+      deduplicatedMap.set(key, { ...doc });
+    } else {
+      if (existing.specialty !== doc.specialty && !existing.specialty.includes(doc.specialty)) {
+        existing.specialty = `${existing.specialty} & ${doc.specialty}`;
+      }
+      if (!existing.phone && doc.phone) existing.phone = doc.phone;
+      if (!existing.email && doc.email) existing.email = doc.email;
+      if (!existing.website && doc.website) existing.website = doc.website;
+      if (!existing.bookingUrl && doc.bookingUrl) existing.bookingUrl = doc.bookingUrl;
+      if (existing.providerType !== doc.providerType && doc.providerType === "OEGK") {
+        existing.providerType = "OEGK";
+      }
+    }
+  }
+
+  return Array.from(deduplicatedMap.values());
+}
+
+export function mergeDoctorProfiles(
+  baseDoctors: DoctorRecord[],
+  overrides: Array<Partial<DoctorRecord> & Pick<DoctorRecord, "id">>,
+) {
+  const overrideById = new Map(overrides.map((profile) => [profile.id, profile]));
+  const mergedIds = new Set<string>();
+  const merged = baseDoctors.map((doctor) => {
+    const override = overrideById.get(doctor.id);
+    mergedIds.add(doctor.id);
+    if (!override) {
+      return doctor;
+    }
+
+    const addressChanged = typeof override.address === "string" && override.address.trim() !== doctor.address.trim();
+    return addressChanged
+      ? { ...doctor, ...override, id: doctor.id, languages: override.languages?.length ? override.languages : ["Deutsch"], latitude: undefined, longitude: undefined }
+      : { ...doctor, ...override, id: doctor.id, languages: override.languages?.length ? override.languages : ["Deutsch"] };
+  });
+
+  for (const override of overrides) {
+    if (!mergedIds.has(override.id)) {
+      merged.push({ ...override, languages: override.languages?.length ? override.languages : ["Deutsch"] } as DoctorRecord);
+    }
+  }
+
+  return merged;
 }
 
 export function getDoctorSpecialties(doctors: DoctorRecord[]) {
@@ -381,10 +479,20 @@ export function getDoctorSeoSlug(doctor: Pick<DoctorRecord, "id" | "name" | "spe
 
 export function findDoctorBySeoSlug(doctors: DoctorRecord[], slug: string) {
   const normalizedTarget = slug.trim().toLowerCase();
-  return doctors.find((doctor) => getDoctorSeoSlug(doctor) === normalizedTarget);
+  const exactMatch = doctors.find((doctor) => getDoctorSeoSlug(doctor) === normalizedTarget);
+  if (exactMatch) {
+    return exactMatch;
+  }
+
+  // Name/Fachbereich/Bezirk aendern den Slug; die ID bleibt stabil, damit alte SEO-URLs weiter aufloesbar sind.
+  return doctors.find((doctor) => normalizedTarget.endsWith(`-${normalizeSlugId(doctor.id)}`));
 }
 
 export function getDoctorWorkingHours(doctor: DoctorRecord): WorkingHoursEntry[] {
+  if (doctor.workingHours && doctor.workingHours.length > 0) {
+    return doctor.workingHours;
+  }
+
   return [
     {
       label: "Montag bis Freitag",

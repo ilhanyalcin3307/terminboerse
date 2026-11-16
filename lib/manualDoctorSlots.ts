@@ -395,3 +395,45 @@ export async function getUpcomingManualSlotsByDoctorIds(doctorIds: string[], max
 
   return result;
 }
+
+export async function getUpcomingManualSlots(maxPerDoctor = 3) {
+  const result = new Map<string, ManualDoctorSlot[]>();
+
+  if (hasSupabaseConfig()) {
+    const supabase = createSupabaseAdminClient();
+    const nowIso = new Date().toISOString();
+    const limitIso = new Date(Date.now() + MAX_LOOKAHEAD_MS).toISOString();
+
+    const { data, error } = await supabase
+      .from(SUPABASE_TABLE)
+      .select("id, doctor_id, starts_at, ends_at, status, created_at, updated_at")
+      .eq("status", "free")
+      .gte("starts_at", nowIso)
+      .lte("starts_at", limitIso)
+      .order("starts_at", { ascending: true });
+
+    if (error) {
+      return result;
+    }
+
+    for (const row of data ?? []) {
+      const slot = toManualSlot(row);
+      const current = result.get(slot.doctorId) ?? [];
+      if (current.length < maxPerDoctor) {
+        current.push(slot);
+        result.set(slot.doctorId, current);
+      }
+    }
+
+    return result;
+  }
+
+  for (const doctorId of inMemorySlots.keys()) {
+    const upcomingSlots = listManualSlotsFromMemory(doctorId).slice(0, maxPerDoctor);
+    if (upcomingSlots.length > 0) {
+      result.set(doctorId, upcomingSlots);
+    }
+  }
+
+  return result;
+}

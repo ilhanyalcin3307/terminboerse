@@ -8,6 +8,7 @@ import {
 } from "@/lib/googleCalendarOAuth";
 import { getGoogleCalendarConnection, upsertGoogleCalendarConnection } from "@/lib/googleCalendarConnectionStore";
 import { upsertSchedulingStatusEntry } from "@/lib/arztbereichSchedulingStore";
+import { revalidatePublicDoctorProfiles } from "@/lib/publicDoctorProfiles";
 
 export async function GET(request: Request) {
   try {
@@ -56,6 +57,7 @@ export async function GET(request: Request) {
       schedulingEnabled: true,
     });
 
+    revalidatePublicDoctorProfiles();
     const calendarState = refreshToken ? "connected" : "connected_no_refresh";
 
     return NextResponse.redirect(new URL(`/arztbereich?calendar=${calendarState}&doctorId=${encodeURIComponent(state.doctorId)}`, request.url));

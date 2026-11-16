@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
-import doctorsJson from "@/data/doctors.json";
+import { getDirectoryDoctors } from "@/lib/doctorDirectory";
 import { getDoctorCommunityPreviews } from "@/lib/doctorCommunity";
 import { getNextFreeSlotMap } from "@/lib/manualDoctorSlots";
 import {
   getDoctorDistricts,
   getDoctorSpecialties,
-  normalizeDoctorsData,
   tokenizeDoctorSearch,
 } from "@/lib/doctors";
 
@@ -13,20 +12,6 @@ const ALL_SPECIALTIES = "Alle Fachbereiche";
 const ALL_DISTRICTS = "Alle Bezirke";
 const DEFAULT_PAGE_SIZE = 24;
 const MAX_PAGE_SIZE = 60;
-
-const allDoctors = normalizeDoctorsData(doctorsJson);
-const allSpecialties = [ALL_SPECIALTIES, ...getDoctorSpecialties(allDoctors)];
-const allDistricts = [ALL_DISTRICTS, ...getDoctorDistricts(allDoctors).filter((item) => item !== "All Wien")];
-const doctorsWithIndex = allDoctors.map((doctor) => ({
-  doctor,
-  searchable: tokenizeDoctorSearch(`${doctor.name} ${doctor.address} ${doctor.specialty} ${doctor.district}`).join(" "),
-}));
-
-const baseStats = {
-  totalDoctors: allDoctors.length,
-  totalWithPhone: allDoctors.filter((item) => Boolean(item.phone)).length,
-  totalSpecialties: allSpecialties.length - 1,
-};
 
 function parsePositiveInt(value: string | null, fallback: number) {
   if (!value) {
@@ -62,17 +47,18 @@ export async function GET(request: Request) {
   const specialty = searchParams.get("specialty")?.trim() ?? ALL_SPECIALTIES;
   const page = parsePositiveInt(searchParams.get("page"), 1);
   const pageSize = Math.min(parsePositiveInt(searchParams.get("pageSize"), DEFAULT_PAGE_SIZE), MAX_PAGE_SIZE);
-
+  const allDoctors = await getDirectoryDoctors();
+  const allSpecialties = [ALL_SPECIALTIES, ...getDoctorSpecialties(allDoctors)];
+  const allDistricts = [ALL_DISTRICTS, ...getDoctorDistricts(allDoctors).filter((item) => item !== "All Wien")];
   const tokens = tokenizeDoctorSearch(query);
 
-  const filtered = doctorsWithIndex
-    .filter(({ doctor, searchable }) => {
-      const byDistrict = district === ALL_DISTRICTS || doctor.district === district;
-      const bySpecialty = specialty === ALL_SPECIALTIES || doctor.specialty === specialty;
-      const byQuery = tokens.length === 0 || tokens.every((token) => searchable.includes(token));
-      return byDistrict && bySpecialty && byQuery;
-    })
-    .map((entry) => entry.doctor);
+  const filtered = allDoctors.filter((doctor) => {
+    if (district !== ALL_DISTRICTS && doctor.district !== district) return false;
+    if (specialty !== ALL_SPECIALTIES && doctor.specialty !== specialty) return false;
+    if (tokens.length === 0) return true;
+    const searchable = tokenizeDoctorSearch(`${doctor.name} ${doctor.address} ${doctor.specialty} ${doctor.district}`).join(" ");
+    return tokens.every((token) => searchable.includes(token));
+  });
 
   const total = filtered.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -110,6 +96,10 @@ export async function GET(request: Request) {
       districts: allDistricts,
       specialties: allSpecialties,
     },
-    stats: baseStats,
-  });
+    stats: {
+      totalDoctors: allDoctors.length,
+      totalWithPhone: allDoctors.filter((item) => Boolean(item.phone)).length,
+      totalSpecialties: allSpecialties.length - 1,
+    },
+  }, { headers: { "Cache-Control": "public, max-age=0, s-maxage=60, stale-while-revalidate=60" } });
 }

@@ -15,6 +15,7 @@ type HeaderAuthState = {
   kind: "guest" | "user" | "doctor";
   displayName: string;
   profileHref: string;
+  menuLabel: string;
 };
 
 const ARZTBEREICH_STORAGE_KEY = "terminboerse_arztbereich_auth_v2";
@@ -41,12 +42,27 @@ function getDisplayNameFromEmail(email: string) {
     .join(" ");
 }
 
+function hasArztbereichToken() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  try {
+    const raw = localStorage.getItem(ARZTBEREICH_STORAGE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as { token?: string }) : null;
+    return typeof parsed?.token === "string" && parsed.token.trim() !== "";
+  } catch {
+    return false;
+  }
+}
+
 export function SiteShell({ children }: SiteShellProps) {
   const [viennaDateTime, setViennaDateTime] = useState("");
   const [authState, setAuthState] = useState<HeaderAuthState>({
     kind: "guest",
     displayName: "Login",
     profileHref: "/login",
+    menuLabel: "Profil",
   });
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -108,6 +124,7 @@ export function SiteShell({ children }: SiteShellProps) {
                 kind: "doctor",
                 displayName: getDisplayNameFromEmail(email),
                 profileHref: payload.session.role === "admin" ? "/arztbereich-admin" : "/arztbereich",
+                menuLabel: payload.session.role === "admin" ? "Adminbereich" : "Arztbereich",
               });
               return;
             }
@@ -122,20 +139,33 @@ export function SiteShell({ children }: SiteShellProps) {
       }
 
       try {
-        const { data } = await supabaseClient.auth.getUser();
-        const email = data.user?.email ?? "";
+        const { data } = await supabaseClient.auth.getSession();
+        const email = data.session?.user.email ?? "";
         if (!cancelled && email) {
+          const roleResponse = await fetch("/api/arztbereich/account-role", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ accessToken: data.session?.access_token }),
+          });
+          const rolePayload = (await roleResponse.json()) as {
+            ok?: boolean;
+            role?: "admin" | "doctor" | null;
+          };
+          const arztbereichRole = roleResponse.ok && rolePayload.ok ? rolePayload.role : null;
           const metaName =
-            typeof data.user?.user_metadata?.full_name === "string"
-              ? data.user.user_metadata.full_name
-              : typeof data.user?.user_metadata?.name === "string"
-                ? data.user.user_metadata.name
+            typeof data.session?.user.user_metadata?.full_name === "string"
+              ? data.session.user.user_metadata.full_name
+              : typeof data.session?.user.user_metadata?.name === "string"
+                ? data.session.user.user_metadata.name
                 : "";
 
           setAuthState({
-            kind: "user",
+            kind: arztbereichRole ? "doctor" : "user",
             displayName: metaName.trim() || getDisplayNameFromEmail(email),
-            profileHref: "/profil",
+            profileHref: arztbereichRole === "admin" ? "/arztbereich-admin" : arztbereichRole === "doctor" ? "/arztbereich" : "/profil",
+            menuLabel: arztbereichRole === "admin" ? "Adminbereich" : arztbereichRole === "doctor" ? "Arztbereich" : "Profil",
           });
         }
       } catch {
@@ -159,7 +189,11 @@ export function SiteShell({ children }: SiteShellProps) {
       data: { subscription },
     } = supabaseClient.auth.onAuthStateChange((event, session) => {
       if (event === "SIGNED_OUT") {
-        setAuthState({ kind: "guest", displayName: "Login", profileHref: "/login" });
+        setAuthState({ kind: "guest", displayName: "Login", profileHref: "/login", menuLabel: "Profil" });
+        return;
+      }
+
+      if (hasArztbereichToken()) {
         return;
       }
 
@@ -179,6 +213,7 @@ export function SiteShell({ children }: SiteShellProps) {
         kind: "user",
         displayName: metaName.trim() || getDisplayNameFromEmail(email),
         profileHref: "/profil",
+        menuLabel: "Profil",
       });
     });
 
@@ -224,7 +259,7 @@ export function SiteShell({ children }: SiteShellProps) {
       }
     }
 
-    setAuthState({ kind: "guest", displayName: "Login", profileHref: "/login" });
+    setAuthState({ kind: "guest", displayName: "Login", profileHref: "/login", menuLabel: "Profil" });
     window.location.href = "/";
   }
 
@@ -270,7 +305,7 @@ export function SiteShell({ children }: SiteShellProps) {
                       onClick={() => setMenuOpen(false)}
                       className="block rounded-lg px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
                     >
-                      Profil
+                      {authState.menuLabel}
                     </Link>
                     <button
                       type="button"

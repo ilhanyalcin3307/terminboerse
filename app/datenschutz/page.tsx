@@ -1,3 +1,11 @@
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Datenschutz | Terminbörse.at",
+  description: "Datenschutzhinweise für die Nutzung von Terminbörse.at.",
+  alternates: { canonical: "/datenschutz" },
+};
+
 export default function DatenschutzPage() {
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6">
